@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!--
+Synthetic, fictional Lattes-shaped XML for tests only. Structure is a
+best-effort approximation of the publicly documented CNPq schema, NOT
+derived from a real export (see lattes.py module docstring, Fase B).
+All names/numbers below are made up. Includes fake PII attributes
+(CPF, RG, ENDERECO, TELEFONE, DATA-NASCIMENTO) specifically so tests can
+assert they never make it into LattesExtract.
+-->
+<CURRICULO-VITAE DATA-ATUALIZACAO="15012026">
+  <DADOS-GERAIS NOME-COMPLETO="Fulana de Tal" ORCID-ID="0000-0000-0000-0000"
+      CPF="000.000.000-00" RG="0000000" DATA-NASCIMENTO="01011995"
+      ENDERECO="Rua Ficticia, 123" TELEFONE="(00) 00000-0000">
+    <FORMACAO-ACADEMICA-TITULACAO>
+      <DOUTORADO NOME-INSTITUICAO="Universidade Ficticia" ANO-DE-INICIO="2022" ANO-DE-CONCLUSAO=""/>
+    </FORMACAO-ACADEMICA-TITULACAO>
+    <ATUACOES-PROFISSIONAIS>
+      <ATUACAO-PROFISSIONAL NOME-INSTITUICAO="Universidade Ficticia">
+        <VINCULOS>
+          <VINCULO TIPO-DE-VINCULO="BOLSISTA" ANO-INICIO="2022" ANO-FIM=""/>
+        </VINCULOS>
+      </ATUACAO-PROFISSIONAL>
+    </ATUACOES-PROFISSIONAIS>
+    <AREAS-DE-ATUACAO>
+      <AREA-DE-ATUACAO NOME-DA-AREA-DO-CONHECIMENTO="Estatistica Aplicada"/>
+      <AREA-DE-ATUACAO NOME-DA-AREA-DO-CONHECIMENTO="Bioinformatica"/>
+    </AREAS-DE-ATUACAO>
+    <IDIOMAS>
+      <IDIOMA NOME="Ingles" PROFICIENCIA-LEITURA="Bom"/>
+    </IDIOMAS>
+    <PROJETOS-DE-PESQUISA>
+      <PROJETO-DE-PESQUISA NOME-DO-PROJETO="Microbioma e estatistica ambiental"
+          DESCRICAO-DO-PROJETO="Analise de dados de NGS de microbioma usando modelos mistos."
+          ANO-INICIO="2023" ANO-FIM=""/>
+    </PROJETOS-DE-PESQUISA>
+    <PRODUCAO-BIBLIOGRAFICA>
+      <ARTIGOS-PUBLICADOS>
+        <ARTIGO-PUBLICADO>
+          <DADOS-BASICOS-DO-ARTIGO TITULO-DO-ARTIGO="Um estudo de caso em microbioma"
+              ANO-DO-ARTIGO="2025" DOI="10.1234/fake.doi"/>
+        </ARTIGO-PUBLICADO>
+      </ARTIGOS-PUBLICADOS>
+    </PRODUCAO-BIBLIOGRAFICA>
+  </DADOS-GERAIS>
+</CURRICULO-VITAE>
