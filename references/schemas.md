@@ -13,7 +13,7 @@ around.
 | `methods` | `list[str]`, min 1 | free text, same dual use as above |
 | `cv_summary` | `str` | short text, not a full CV |
 | `academic_stage` | `AcademicStage` | `program_started: date`, `expected_defense: date \| None` (must be >= program_started) |
-| `target_level` | `"doutorado" \| "sanduiche" \| "posdoc"` | |
+| `target_level` | `"mestrado" \| "doutorado" \| "sanduiche" \| "pleno" \| "posdoc"` | `"pleno"` = doutorado pleno no exterior (programa inteiro fora do Brasil), distinto de `"sanduiche"` (só um período fora, doutorado principal no Brasil). `bolsa-finder target-levels` imprime a descrição de cada um. |
 | `languages` | `list[LanguageProficiency]`, min 1 | `{language, proficiency}`, proficiency one of `basico\|intermediario\|avancado\|fluente\|nativo` |
 | `nationality` | `str` | |
 | `geographic_restrictions` | `list[str]`, default `[]` | free text, e.g. countries to avoid |

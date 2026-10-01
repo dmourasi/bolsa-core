@@ -1,6 +1,15 @@
+from typing import get_args
+
+import pytest
 import yaml
 
-from bolsa_finder.profile import Profile, ProfileLoadError, load_profile
+from bolsa_finder.profile import (
+    TARGET_LEVEL_DESCRIPTIONS,
+    Profile,
+    ProfileLoadError,
+    TargetLevel,
+    load_profile,
+)
 
 
 def test_valid_profile_dict_parses(valid_profile_dict: dict) -> None:
@@ -8,6 +17,31 @@ def test_valid_profile_dict_parses(valid_profile_dict: dict) -> None:
     assert profile.target_level == "sanduiche"
     assert profile.nationality == "brazilian"
     assert len(profile.languages) == 2
+
+
+@pytest.mark.parametrize("level", ["mestrado", "doutorado", "sanduiche", "pleno", "posdoc"])
+def test_all_target_levels_are_accepted(valid_profile_dict: dict, level: str) -> None:
+    valid = dict(valid_profile_dict)
+    valid["target_level"] = level
+
+    profile = Profile.model_validate(valid)
+
+    assert profile.target_level == level
+
+
+def test_invalid_target_level_rejected(valid_profile_dict: dict) -> None:
+    invalid = dict(valid_profile_dict)
+    invalid["target_level"] = "graduacao"
+
+    try:
+        Profile.model_validate(invalid)
+        assert False, "expected validation error"
+    except Exception as exc:
+        assert "target_level" in str(exc)
+
+
+def test_target_level_descriptions_cover_every_level() -> None:
+    assert set(TARGET_LEVEL_DESCRIPTIONS.keys()) == set(get_args(TargetLevel))
 
 
 def test_load_profile_from_yaml_file(tmp_path, valid_profile_dict: dict) -> None:

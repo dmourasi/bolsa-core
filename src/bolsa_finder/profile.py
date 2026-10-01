@@ -14,7 +14,18 @@ from typing import Annotated, Literal
 import yaml
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
-TargetLevel = Literal["doutorado", "sanduiche", "posdoc"]
+# "pleno" = doutorado pleno no exterior (the whole PhD program abroad),
+# distinct from "sanduiche" (a period abroad with the PhD based in Brazil)
+# and from "doutorado" (PhD based in Brazil, no funded period abroad).
+TargetLevel = Literal["mestrado", "doutorado", "sanduiche", "pleno", "posdoc"]
+
+TARGET_LEVEL_DESCRIPTIONS: dict[TargetLevel, str] = {
+    "mestrado": "Mestrado",
+    "doutorado": "Doutorado (no Brasil, sem período financiado no exterior)",
+    "sanduiche": "Doutorado-sanduíche (período no exterior, doutorado principal no Brasil)",
+    "pleno": "Doutorado pleno no exterior (programa inteiro cursado fora do Brasil)",
+    "posdoc": "Pós-doutorado",
+}
 
 ProficiencyLevel = Literal["basico", "intermediario", "avancado", "fluente", "nativo"]
 
