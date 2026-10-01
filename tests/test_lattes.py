@@ -6,6 +6,8 @@ import pymupdf
 from bolsa_finder.lattes import (
     LattesExtract,
     ProvenancedList,
+    _paragraphs,
+    _split_sections,
     check_staleness,
     merge_into_profile,
     parse_lattes_pdf,
@@ -18,11 +20,21 @@ FIXTURE_PATH = Path(__file__).parent / "fixtures" / "lattes_sample.xml"
 
 def _build_synthetic_lattes_pdf(path: Path, lines: list[str]) -> None:
     """Write a minimal PDF with one line of text per line, for testing
-    parse_lattes_pdf's regex/section heuristics without a real Lattes PDF."""
+    parse_lattes_pdf's regex/section heuristics without a real Lattes PDF.
+
+    An empty string in `lines` renders as a paragraph break: the real
+    Lattes PDF export separates entries within a section with a blank
+    line (see README.lattes.md, Fase B), which pymupdf only reconstructs
+    as a blank line in extracted text when there is a large enough
+    vertical gap between text blocks.
+    """
     doc = pymupdf.open()
     page = doc.new_page()
     y = 72
     for line in lines:
+        if line == "":
+            y += 20
+            continue
         page.insert_text((72, y), line)
         y += 14
     doc.save(str(path))
@@ -147,6 +159,11 @@ def test_merge_into_profile_custom_cv_summary_overrides_default() -> None:
 
 
 def test_parse_lattes_pdf_best_effort_extraction(tmp_path: Path) -> None:
+    # This mirrors the real Lattes PDF export structure found during Fase B
+    # (see README.lattes.md): entries are blank-line-separated paragraphs,
+    # not single lines -- a bare year/year-range marker, then the entry's
+    # free text as the next paragraph(s); numbered items ("1.") similarly
+    # sit in their own paragraph before their content.
     pdf_path = tmp_path / "lattes.pdf"
     _build_synthetic_lattes_pdf(
         pdf_path,
@@ -154,18 +171,42 @@ def test_parse_lattes_pdf_best_effort_extraction(tmp_path: Path) -> None:
             "Fulana de Tal",
             "ORCID: 0000-0000-0000-0001",
             "Ultima atualizacao do curriculo em 15/01/2026",
+            "",
             "Formacao academica/titulacao",
-            "2022 - Atual Doutorado em Estatistica, Universidade Ficticia PDF",
+            "",
+            "2022 - Atual",
+            "",
+            "Doutorado em Estatistica, Universidade Ficticia PDF",
+            "",
             "Areas de atuacao",
-            "Estatistica Aplicada",
-            "Bioinformatica",
+            "",
+            "1.",
+            "",
+            "Grande area: Ciencias Exatas / Area: Estatistica Aplicada.",
+            "",
+            "2.",
+            "",
+            "Grande area: Ciencias Biologicas / Area: Bioinformatica.",
+            "",
             "Idiomas",
-            "Ingles Compreende Bem, Fala Bem.",
+            "",
+            "Ingles",
+            "",
+            "Compreende Bem, Fala Bem.",
+            "",
             "Projetos de pesquisa",
-            "2023 - Atual Microbioma e estatistica ambiental PDF",
-            "Analise de dados de NGS via PDF.",
-            "Producao bibliografica",
-            "Um estudo de caso em microbioma PDF 2025 10.1234/fake.pdf.doi",
+            "",
+            "2023 - Atual",
+            "",
+            "Microbioma e estatistica ambiental PDF",
+            "",
+            "Descricao: Analise de dados de NGS via PDF.",
+            "",
+            "Artigos completos publicados em periodicos",
+            "",
+            "1.",
+            "",
+            "Um estudo de caso em microbioma PDF, v. 1, p. 1, 2025. 10.1234/fake.pdf.doi",
         ],
     )
 
@@ -181,18 +222,78 @@ def test_parse_lattes_pdf_best_effort_extraction(tmp_path: Path) -> None:
     assert extract.education[0].started == date(2022, 1, 1)
     assert extract.education[0].finished is None
 
-    assert set(extract.cnpq_areas.values) == {"Estatistica Aplicada", "Bioinformatica"}
+    assert set(extract.cnpq_areas.values) == {
+        "Grande area: Ciencias Exatas / Area: Estatistica Aplicada.",
+        "Grande area: Ciencias Biologicas / Area: Bioinformatica.",
+    }
 
     assert len(extract.languages) == 1
     assert extract.languages[0].language == "Ingles"
+    assert "Compreende Bem" in extract.languages[0].self_reported_proficiency
 
     assert len(extract.projects) == 1
     assert "Microbioma" in extract.projects[0].title
     assert "NGS" in extract.projects[0].description_raw
+    assert extract.projects[0].started == date(2023, 1, 1)
+    assert extract.projects[0].finished is None
 
     assert len(extract.publications) == 1
     assert extract.publications[0].doi == "10.1234/fake.pdf.doi"
     assert extract.publications[0].year == 2025
+
+
+def test_split_sections_keeps_first_occurrence_when_header_repeats() -> None:
+    # Observed in a real Lattes PDF export: a section header can reappear
+    # verbatim later in the document for an unrelated, shorter listing.
+    # The first (complete) occurrence must win, not the second.
+    text = (
+        "Projetos de pesquisa\n"
+        "first entry content\n"
+        "\n"
+        "Idiomas\n"
+        "Ingles\n"
+        "\n"
+        "Projetos de pesquisa\n"
+        "second unrelated short blurb\n"
+    )
+
+    sections = _split_sections(text)
+
+    assert sections["Projetos de pesquisa"].strip() == "first entry content"
+    assert sections["Idiomas"].strip() == "Ingles"
+
+
+def test_paragraphs_splits_marker_merged_onto_start_of_next_paragraph() -> None:
+    # "2017 - 2019 Project Title" instead of the marker on its own line
+    # (observed at a PDF page break).
+    text = "2017 - 2019 Project Title\n\nDescricao: something."
+
+    paragraphs = _paragraphs(text)
+
+    assert paragraphs[0] == "2017 - 2019"
+    assert paragraphs[1] == "Project Title"
+
+
+def test_paragraphs_splits_marker_merged_onto_end_of_previous_paragraph() -> None:
+    # "...- Bolsa. 2010 - 2014" instead of the marker on its own line
+    # (observed at a PDF page break) -- the full range must be kept
+    # together, not split as "...2010 -" + "2014".
+    text = "Financiador: Agencia X - Bolsa. 2010 - 2014\n\nNext Title"
+
+    paragraphs = _paragraphs(text)
+
+    assert paragraphs[0] == "Financiador: Agencia X - Bolsa."
+    assert paragraphs[1] == "2010 - 2014"
+
+
+def test_paragraphs_does_not_split_an_inline_year_reference() -> None:
+    # "Ano de Obtenção: 2019." has a trailing period right after the year,
+    # unlike a genuine merged marker -- must NOT be treated as one.
+    text = "Titulo: Something. Ano de Obtencao: 2019.\n\nNext paragraph."
+
+    paragraphs = _paragraphs(text)
+
+    assert paragraphs[0] == "Titulo: Something. Ano de Obtencao: 2019."
 
 
 def test_parse_lattes_pdf_never_leaks_pii_even_if_present(tmp_path: Path) -> None:

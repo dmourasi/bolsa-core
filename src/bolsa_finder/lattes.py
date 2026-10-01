@@ -232,20 +232,42 @@ def parse_lattes_xml(xml_path: str | Path) -> LattesExtract:
     )
 
 
+# Headers that bound a section. Includes headers we don't extract from
+# (e.g. "Identificação", "Revisor de periódico") purely so their content
+# doesn't bleed into the body of a section we DO care about -- this list
+# was derived from a real Lattes PDF export (see README.lattes.md, Fase B).
 _SECTION_HEADERS = [
+    "Identificação",
     "Formação acadêmica/titulação",
+    "Formação Complementar",
     "Atuação Profissional",
+    "Revisor de periódico",
+    "Projetos de pesquisa",
     "Áreas de atuação",
     "Idiomas",
-    "Projetos de pesquisa",
+    "Produções",
     "Produção bibliográfica",
+    "Citações",
+    "Artigos completos publicados em periódicos",
+    "Artigos aceitos para publicação",
+    "Apresentações de Trabalho",
 ]
 
 _ORCID_RE = re.compile(r"\b\d{4}-\d{4}-\d{4}-\d{3}[\dXx]\b")
 _LAST_UPDATE_RE = re.compile(r"ultima atualizacao[^0-9]*(\d{2}/\d{2}/\d{4})")
-_EDUCATION_LINE_RE = re.compile(r"^\s*(\d{4})\s*-\s*(\d{4}|Atual)\s+(.+)$", re.IGNORECASE)
+# A bare "YYYY" or "YYYY - YYYY"/"YYYY - Atual" paragraph, used in the real
+# export as a standalone entry-separator before the entry's free text body.
+_YEAR_MARKER_RE = re.compile(r"^\s*(\d{4})(?:\s*-\s*(\d{4}|Atual))?\s*$", re.IGNORECASE)
+_NUMBERED_ITEM_RE = re.compile(r"^\s*\d+\.\s*$")
+_INSTITUTION_RE = re.compile(
+    # Deliberately excludes "." from the name portion so the lazy match
+    # can't run through a prior sentence-ending period (e.g. a degree
+    # description like "Doutorado ... Aplicada.") into the real
+    # institution clause that follows it.
+    r"([A-ZÀ-Ü][\wÀ-ÿ\s\-]*?,\s*[A-Z0-9][A-Z0-9\.\-\*]{1,20}\s*,\s*[\wÀ-ÿ]+)\."
+)
+_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 _DOI_RE = re.compile(r"10\.\d{4,9}/\S+")
-_YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 _EDUCATION_LEVEL_KEYWORDS = [
     ("pos-doutorado", "pos-doutorado"),
     ("doutorado", "doutorado"),
@@ -278,11 +300,22 @@ def _split_sections(text: str) -> dict[str, str]:
     normalized_headers = {_strip_accents(h).lower(): h for h in _SECTION_HEADERS}
     lines = text.splitlines()
     sections: dict[str, list[str]] = {}
+    seen: set[str] = set()
     current: str | None = None
     for line in lines:
         stripped_normalized = _strip_accents(line.strip()).lower()
         matched_header = normalized_headers.get(stripped_normalized)
         if matched_header:
+            if matched_header in seen:
+                # A real Lattes export can repeat a section's header
+                # verbatim for an unrelated secondary listing further down
+                # the document (observed: "Projetos de pesquisa" reused for
+                # a short, distinct block near the end). Rather than guess
+                # which occurrence is "the real one", keep the first and
+                # drop everything until the next genuinely new header.
+                current = None
+                continue
+            seen.add(matched_header)
             current = matched_header
             sections[current] = []
             continue
@@ -308,18 +341,251 @@ def _education_level_from_text(text: str) -> str:
     return "unknown"
 
 
+_LEADING_MARKER_SPLIT_RE = re.compile(r"^(\d{4}(?:\s*-\s*(?:\d{4}|Atual))?)\s+(\S.*)$", re.IGNORECASE)
+# Tried in order: a full "YYYY - YYYY/Atual" range must win over treating
+# just the trailing "YYYY" as the marker (greedy backtracking on a single
+# combined pattern would otherwise prefer the shorter, wrong match -- e.g.
+# splitting "...Bolsa. 2010 - 2014" as "...Bolsa. 2010 -" + "2014").
+_TRAILING_MARKER_SPLIT_RES = [
+    re.compile(r"^(.*\S)\s+(\d{4}\s*-\s*(?:\d{4}|Atual))$", re.IGNORECASE),
+    re.compile(r"^(.*\S)\s+(\d{4})$"),
+]
+
+
+def _normalize_year_markers(paragraphs: list[str]) -> list[str]:
+    """Peel a year/year-range marker into its own paragraph when a page
+    break merged it onto the preceding or following paragraph.
+
+    Normally the real export puts the marker alone on its own paragraph
+    (see `_paragraphs`), but observed real exports sometimes fuse it onto
+    the entry title ("2017 - 2019 Soil nematodes...") or onto the end of
+    the PREVIOUS entry's trailing text ("...- Bolsa. 2010 - 2014") right
+    at a page boundary. A trailing marker is only peeled when it sits at
+    the very end of the paragraph with nothing after it (e.g. this avoids
+    misreading "Ano de Obtenção: 2019." as a marker, since that has a
+    period after the year rather than being the end of the paragraph).
+    """
+    normalized: list[str] = []
+    for paragraph in paragraphs:
+        if _YEAR_MARKER_RE.match(paragraph):
+            normalized.append(paragraph)
+            continue
+        leading = _LEADING_MARKER_SPLIT_RE.match(paragraph)
+        if leading:
+            normalized.append(leading.group(1))
+            normalized.append(leading.group(2))
+            continue
+        trailing = next(
+            (m for pattern in _TRAILING_MARKER_SPLIT_RES if (m := pattern.match(paragraph))), None
+        )
+        if trailing:
+            normalized.append(trailing.group(1))
+            normalized.append(trailing.group(2))
+            continue
+        normalized.append(paragraph)
+    return normalized
+
+
+def _paragraphs(section_text: str) -> list[str]:
+    """Split a section's body into blank-line-separated paragraphs.
+
+    The real Lattes PDF export (see README.lattes.md, Fase B) uses blank
+    lines, not tags, to separate entries within a section -- a year/
+    year-range marker alone on its own paragraph, then the entry's free
+    text as the next paragraph(s). This is far more robust than matching
+    a fixed single-line format, which the real export does not follow.
+    """
+    normalized_lines = [line if line.strip() else "" for line in section_text.splitlines()]
+    raw_paragraphs = re.split(r"\n{2,}", "\n".join(normalized_lines))
+    paragraphs = [re.sub(r"\s+", " ", p).strip() for p in raw_paragraphs if p.strip()]
+    return _normalize_year_markers(paragraphs)
+
+
+def _year_range(marker: re.Match) -> tuple[date, date | None]:
+    start_year, end_token = marker.groups()
+    started = date(int(start_year), 1, 1)
+    finished = None if not end_token or end_token.lower() == "atual" else date(int(end_token), 1, 1)
+    return started, finished
+
+
+def _extract_institution(body: str) -> str:
+    """Best-effort 'Name, ABBREV, Country' extraction from free-text body.
+
+    Falls back to the raw body when the pattern isn't found -- never
+    guesses an institution name that isn't literally present in the text.
+    """
+    match = _INSTITUTION_RE.search(body)
+    return match.group(1).strip() if match else body
+
+
+def _parse_education(section_text: str) -> list[Education]:
+    paragraphs = _paragraphs(section_text)
+    education: list[Education] = []
+    i = 0
+    while i < len(paragraphs):
+        marker = _YEAR_MARKER_RE.match(paragraphs[i])
+        if marker and i + 1 < len(paragraphs):
+            started, finished = _year_range(marker)
+            body = paragraphs[i + 1]
+            education.append(
+                Education(
+                    level=_education_level_from_text(body),
+                    institution=_extract_institution(body),
+                    started=started,
+                    finished=finished,
+                )
+            )
+            i += 2
+        else:
+            i += 1
+    return education
+
+
+def _parse_professional_activities(section_text: str) -> list[ProfessionalActivity]:
+    paragraphs = _paragraphs(section_text)
+    activities: list[ProfessionalActivity] = []
+    current_institution: str | None = None
+    pending_period: tuple[date, date | None] | None = None
+
+    for paragraph in paragraphs:
+        normalized = _strip_accents(paragraph).lower()
+        if normalized in {"vinculo institucional", "outras informacoes"}:
+            continue
+        marker = _YEAR_MARKER_RE.match(paragraph)
+        if marker:
+            pending_period = _year_range(marker)
+            continue
+        if normalized.startswith("vinculo:") and current_institution is not None:
+            started, finished = pending_period or (date.today(), None)
+            role_match = re.search(r"Enquadramento Funcional:\s*([^,]+)", paragraph)
+            role = role_match.group(1).strip() if role_match else paragraph
+            activities.append(
+                ProfessionalActivity(
+                    institution=current_institution,
+                    role=role,
+                    started=started,
+                    finished=finished,
+                )
+            )
+            pending_period = None
+            continue
+        # Anything else that looks like "Name, ABBREV, Country." starts a
+        # new institution block; free-text asides (e.g. "Outras informações"
+        # body) are otherwise skipped rather than misfiled as a new entry.
+        if _INSTITUTION_RE.search(paragraph):
+            current_institution = _extract_institution(paragraph)
+
+    return activities
+
+
+def _parse_cnpq_areas(section_text: str) -> list[str]:
+    return [p for p in _paragraphs(section_text) if not _NUMBERED_ITEM_RE.match(p)]
+
+
+def _parse_languages(section_text: str) -> list[LanguageSkill]:
+    paragraphs = _paragraphs(section_text)
+    languages: list[LanguageSkill] = []
+    i = 0
+    while i < len(paragraphs):
+        normalized = _strip_accents(paragraphs[i]).lower()
+        is_proficiency_line = normalized.startswith("compreende")
+        if not is_proficiency_line and i + 1 < len(paragraphs):
+            languages.append(
+                LanguageSkill(language=paragraphs[i], self_reported_proficiency=paragraphs[i + 1])
+            )
+            i += 2
+        else:
+            i += 1
+    return languages
+
+
+def _parse_projects(section_text: str) -> list[Project]:
+    paragraphs = _paragraphs(section_text)
+    projects: list[Project] = []
+    i = 0
+    while i < len(paragraphs):
+        marker = _YEAR_MARKER_RE.match(paragraphs[i])
+        if marker and i + 1 < len(paragraphs):
+            started, finished = _year_range(marker)
+            title = paragraphs[i + 1]
+            description_raw = ""
+            j = i + 2
+            while j < len(paragraphs) and not _YEAR_MARKER_RE.match(paragraphs[j]):
+                if _strip_accents(paragraphs[j]).lower().startswith("descricao:"):
+                    description_raw = paragraphs[j].split(":", 1)[1].strip()
+                j += 1
+            projects.append(
+                Project(title=title, description_raw=description_raw, started=started, finished=finished)
+            )
+            i = j
+        else:
+            i += 1
+    return projects
+
+
+def _parse_publications(section_text: str) -> list[Publication]:
+    """Extract publications from 'Artigos completos publicados em periódicos'.
+
+    The real export does NOT print a DOI in this list (unlike the XML,
+    which does), so `doi` is always None here -- never guessed. Title is
+    kept as the full citation text rather than attempting to split author
+    list / title / journal name, which is not reliably separable from
+    free-flowing PDF text without risking a wrong split; the full citation
+    still works fine as fit-scoring evidence in score.py's text matching.
+    """
+    paragraphs = _paragraphs(section_text)
+    publications: list[Publication] = []
+    i = 0
+    while i < len(paragraphs):
+        # Usually "N." is its own paragraph with the citation as the next
+        # one, but sometimes (e.g. right at a page break) they land in the
+        # same paragraph as "N. <citation>" -- handle both.
+        merged_match = re.match(r"^\d+\.\s+(\S.*)$", paragraphs[i])
+        if merged_match:
+            citation = merged_match.group(1)
+            i += 1
+        elif _NUMBERED_ITEM_RE.match(paragraphs[i]) and i + 1 < len(paragraphs):
+            citation = paragraphs[i + 1]
+            i += 2
+        else:
+            i += 1
+            continue
+
+        # The publication year is conventionally the last year-like
+        # number in the citation (volume/page numbers precede it).
+        year_candidates = _YEAR_RE.findall(citation)
+        year = int(year_candidates[-1]) if year_candidates else None
+        doi_match = _DOI_RE.search(citation)
+        publications.append(
+            Publication(
+                title=citation,
+                year=year,
+                doi=doi_match.group(0).rstrip(".,;") if doi_match else None,
+                venue=None,
+            )
+        )
+    return publications
+
+
 def parse_lattes_pdf(pdf_path: str | Path) -> LattesExtract:
     """Best-effort fallback parser for a Lattes CV exported as PDF.
 
     LOWER RELIABILITY than parse_lattes_xml: a Lattes PDF is free-flowing
-    prose with no tags, so this is regex/heuristic-based and can miss or
-    misparse entries that don't match the common Lattes export layout.
-    Callers (the SKILL.md flow) must surface source_format="pdf" to the
-    user as a reliability caveat, same as any other unverified extraction
-    in this project.
+    prose with no tags, so this is paragraph/regex-heuristic-based and can
+    miss or misparse entries that don't match the real export layout this
+    was calibrated against (see README.lattes.md, Fase B). Callers (the
+    SKILL.md flow) must surface source_format="pdf" to the user as a
+    reliability caveat, same as any other unverified extraction here.
     """
     doc = pymupdf.open(str(pdf_path))
-    text = "\n".join(page.get_text() for page in doc)
+    # sort=True reconstructs reading order across the export's two-column
+    # layout (a narrow identity sidebar beside the main CV body); without
+    # it, lines from both columns interleave and every downstream regex
+    # breaks.
+    # .strip() per page avoids a page boundary accidentally introducing a
+    # blank-line gap (our paragraph separator, see _paragraphs) in the
+    # middle of an entry that spans two pages.
+    text = "\n".join(page.get_text(sort=True).strip() for page in doc)
     doc.close()
 
     full_name = next((line.strip() for line in text.splitlines() if line.strip()), "")
@@ -332,81 +598,19 @@ def parse_lattes_pdf(pdf_path: str | Path) -> LattesExtract:
 
     sections = _split_sections(text)
 
-    education: list[Education] = []
-    for line in sections.get("Formação acadêmica/titulação", "").splitlines():
-        match = _EDUCATION_LINE_RE.match(line)
-        if not match:
-            continue
-        start_year, end_token, description = match.groups()
-        institution = description.split(",", 1)[1].strip() if "," in description else ""
-        education.append(
-            Education(
-                level=_education_level_from_text(description),
-                institution=institution,
-                started=date(int(start_year), 1, 1),
-                finished=None if end_token.lower() == "atual" else date(int(end_token), 1, 1),
-            )
-        )
-
-    cnpq_area_names = [
-        line.strip(" .")
-        for line in sections.get("Áreas de atuação", "").splitlines()
-        if line.strip()
-    ]
-
-    languages: list[LanguageSkill] = []
-    for line in sections.get("Idiomas", "").splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        parts = stripped.split(None, 1)
-        if len(parts) == 2:
-            languages.append(LanguageSkill(language=parts[0], self_reported_proficiency=parts[1]))
-
-    projects_text = sections.get("Projetos de pesquisa", "")
-    projects: list[Project] = []
-    for block in re.split(r"\n(?=\d{4}\s*-\s*(?:\d{4}|Atual))", projects_text):
-        match = _EDUCATION_LINE_RE.match(block.splitlines()[0]) if block.strip() else None
-        if not match:
-            continue
-        start_year, end_token, title_line = match.groups()
-        rest = "\n".join(block.splitlines()[1:]).strip()
-        projects.append(
-            Project(
-                title=title_line.strip(),
-                description_raw=rest,
-                started=date(int(start_year), 1, 1),
-                finished=None if end_token.lower() == "atual" else date(int(end_token), 1, 1),
-            )
-        )
-
-    publications: list[Publication] = []
-    for line in sections.get("Produção bibliográfica", "").splitlines():
-        doi_match = _DOI_RE.search(line)
-        if not doi_match:
-            continue
-        year_match = _YEAR_RE.search(line)
-        title = line[: doi_match.start()].strip(" .;")
-        publications.append(
-            Publication(
-                title=title,
-                year=int(year_match.group(0)) if year_match else None,
-                doi=doi_match.group(0).rstrip(".,;"),
-                venue=None,
-            )
-        )
-
     return LattesExtract(
         full_name=full_name,
         orcid=orcid,
         last_update=last_update,
         source_format="pdf",
-        education=education,
-        professional_activities=[],
-        cnpq_areas=ProvenancedList(values=cnpq_area_names, origin="lattes_cv"),
-        languages=languages,
-        projects=projects,
-        publications=publications,
+        education=_parse_education(sections.get("Formação acadêmica/titulação", "")),
+        professional_activities=_parse_professional_activities(sections.get("Atuação Profissional", "")),
+        cnpq_areas=ProvenancedList(
+            values=_parse_cnpq_areas(sections.get("Áreas de atuação", "")), origin="lattes_cv"
+        ),
+        languages=_parse_languages(sections.get("Idiomas", "")),
+        projects=_parse_projects(sections.get("Projetos de pesquisa", "")),
+        publications=_parse_publications(sections.get("Artigos completos publicados em periódicos", "")),
     )
 
 
