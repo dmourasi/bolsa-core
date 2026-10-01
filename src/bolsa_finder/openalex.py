@@ -9,10 +9,17 @@ API docs: https://docs.openalex.org/
 
 from __future__ import annotations
 
+from collections import Counter
+from typing import Literal
+
 import httpx
 from pydantic import BaseModel
 
 BASE_URL = "https://api.openalex.org"
+
+# Mirrors score.ConfidenceLevel; duplicated as a plain Literal (not imported)
+# to avoid a circular import, since score.py imports from this module.
+AuthorMatchConfidence = Literal["high", "medium", "low"]
 
 
 class Topic(BaseModel):
@@ -185,3 +192,62 @@ class OpenAlexClient:
                 )
             )
         return publications
+
+    def find_author_by_orcid(self, orcid: str) -> AuthorHit | None:
+        """Resolve an OpenAlex author directly by ORCID.
+
+        An ORCID match is as close to a verified identity as OpenAlex
+        offers, so this is the preferred resolution path for Lattes-derived
+        candidates (see lattes.py) -- callers should treat this as "high"
+        confidence. Accepts either a bare ORCID ("0000-0002-1298-3089") or
+        a full URL; OpenAlex's filter requires the full URL form.
+        """
+        orcid_url = orcid if orcid.startswith("http") else f"https://orcid.org/{orcid}"
+        data = self._get("/authors", {"filter": f"orcid:{orcid_url}"})
+        results = data.get("results", [])
+        if not results:
+            return None
+        item = results[0]
+        return AuthorHit(
+            id=item["id"],
+            display_name=item.get("display_name", ""),
+            recent_works_count=item.get("works_count", 0),
+        )
+
+    def find_author_by_dois(self, dois: list[str]) -> tuple[AuthorHit, AuthorMatchConfidence] | None:
+        """Resolve an OpenAlex author by overlap with a list of known DOIs.
+
+        Fallback for when no ORCID is available (e.g. an older Lattes CV).
+        Tallies authorship across the works matching any of `dois` and
+        returns the most frequent author -- but this can never be as sure
+        as an ORCID match (a co-author could tally just as high), so the
+        confidence returned is "medium" when the match covers most of the
+        given DOIs, else "low". Returns None if no DOI resolves at all.
+        """
+        clean_dois = [d for d in dois if d]
+        if not clean_dois:
+            return None
+
+        filter_value = "|".join(clean_dois)
+        data = self._get("/works", {"filter": f"doi:{filter_value}", "per_page": "100"})
+        results = data.get("results", [])
+        if not results:
+            return None
+
+        author_counts: Counter[tuple[str, str]] = Counter()
+        for work in results:
+            for authorship in work.get("authorships", []):
+                author = authorship.get("author", {})
+                author_id = author.get("id")
+                if author_id:
+                    author_counts[(author_id, author.get("display_name", ""))] += 1
+
+        if not author_counts:
+            return None
+
+        (author_id, display_name), match_count = author_counts.most_common(1)[0]
+        confidence: AuthorMatchConfidence = "medium" if match_count >= len(clean_dois) / 2 else "low"
+        return (
+            AuthorHit(id=author_id, display_name=display_name, recent_works_count=match_count),
+            confidence,
+        )

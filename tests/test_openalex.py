@@ -113,6 +113,114 @@ def test_works_for_author_parses_results(httpx_mock, client: OpenAlexClient) -> 
     assert publications[0].topics == ["Gut microbiota and health"]
 
 
+def test_find_author_by_orcid_returns_match(httpx_mock, client: OpenAlexClient) -> None:
+    httpx_mock.add_response(
+        url=(
+            "https://api.openalex.org/authors"
+            "?filter=orcid%3Ahttps%3A%2F%2Forcid.org%2F0000-0002-1298-3089"
+            "&mailto=test%40example.com"
+        ),
+        json={
+            "results": [
+                {"id": "https://openalex.org/A999", "display_name": "Fulana de Tal", "works_count": 12}
+            ]
+        },
+    )
+
+    hit = client.find_author_by_orcid("0000-0002-1298-3089")
+
+    assert hit is not None
+    assert hit.id == "https://openalex.org/A999"
+    assert hit.display_name == "Fulana de Tal"
+    assert hit.recent_works_count == 12
+
+
+def test_find_author_by_orcid_returns_none_when_no_match(httpx_mock, client: OpenAlexClient) -> None:
+    httpx_mock.add_response(
+        url=(
+            "https://api.openalex.org/authors"
+            "?filter=orcid%3Ahttps%3A%2F%2Forcid.org%2F0000-0000-0000-0000"
+            "&mailto=test%40example.com"
+        ),
+        json={"results": []},
+    )
+
+    assert client.find_author_by_orcid("0000-0000-0000-0000") is None
+
+
+def test_find_author_by_dois_returns_medium_confidence_on_strong_overlap(
+    httpx_mock, client: OpenAlexClient
+) -> None:
+    httpx_mock.add_response(
+        url=(
+            "https://api.openalex.org/works"
+            "?filter=doi%3A10.1%2Fa%7C10.1%2Fb&per_page=100&mailto=test%40example.com"
+        ),
+        json={
+            "results": [
+                {
+                    "authorships": [
+                        {"author": {"id": "https://openalex.org/A1", "display_name": "Fulana de Tal"}},
+                        {"author": {"id": "https://openalex.org/A2", "display_name": "Coauthor"}},
+                    ]
+                },
+                {
+                    "authorships": [
+                        {"author": {"id": "https://openalex.org/A1", "display_name": "Fulana de Tal"}},
+                    ]
+                },
+            ]
+        },
+    )
+
+    result = client.find_author_by_dois(["10.1/a", "10.1/b"])
+
+    assert result is not None
+    hit, confidence = result
+    assert hit.id == "https://openalex.org/A1"
+    assert hit.recent_works_count == 2
+    assert confidence == "medium"
+
+
+def test_find_author_by_dois_returns_low_confidence_on_weak_overlap(
+    httpx_mock, client: OpenAlexClient
+) -> None:
+    httpx_mock.add_response(
+        url=(
+            "https://api.openalex.org/works"
+            "?filter=doi%3A10.1%2Fa%7C10.1%2Fb%7C10.1%2Fc%7C10.1%2Fd&per_page=100&mailto=test%40example.com"
+        ),
+        json={
+            "results": [
+                {
+                    "authorships": [
+                        {"author": {"id": "https://openalex.org/A1", "display_name": "Fulana de Tal"}},
+                    ]
+                },
+            ]
+        },
+    )
+
+    result = client.find_author_by_dois(["10.1/a", "10.1/b", "10.1/c", "10.1/d"])
+
+    assert result is not None
+    _, confidence = result
+    assert confidence == "low"
+
+
+def test_find_author_by_dois_returns_none_when_no_works_match(httpx_mock, client: OpenAlexClient) -> None:
+    httpx_mock.add_response(
+        url="https://api.openalex.org/works?filter=doi%3A10.1%2Fa&per_page=100&mailto=test%40example.com",
+        json={"results": []},
+    )
+
+    assert client.find_author_by_dois(["10.1/a"]) is None
+
+
+def test_find_author_by_dois_returns_none_for_empty_list(client: OpenAlexClient) -> None:
+    assert client.find_author_by_dois([]) is None
+
+
 def test_raises_on_http_error(httpx_mock, client: OpenAlexClient) -> None:
     httpx_mock.add_response(status_code=500)
 
