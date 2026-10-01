@@ -23,10 +23,13 @@ tag names/casing/attributes may differ by Lattes export version.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal
 
+import pymupdf
 from lxml import etree
 from pydantic import BaseModel, Field
 
@@ -39,7 +42,7 @@ from bolsa_finder.profile import (
     TimeWindow,
 )
 
-Origin = Literal["lattes_xml", "llm_inferred", "user_confirmed"]
+Origin = Literal["lattes_cv", "llm_inferred", "user_confirmed"]
 SourceFormat = Literal["xml", "pdf"]
 
 STALENESS_THRESHOLD_DAYS = 183  # ~6 months
@@ -96,7 +99,7 @@ class LattesExtract(BaseModel):
     source_format: SourceFormat
     education: list[Education] = Field(default_factory=list)
     professional_activities: list[ProfessionalActivity] = Field(default_factory=list)
-    cnpq_areas: ProvenancedList = Field(default_factory=lambda: ProvenancedList(values=[], origin="lattes_xml"))
+    cnpq_areas: ProvenancedList = Field(default_factory=lambda: ProvenancedList(values=[], origin="lattes_cv"))
     languages: list[LanguageSkill] = Field(default_factory=list)
     projects: list[Project] = Field(default_factory=list)
     publications: list[Publication] = Field(default_factory=list)
@@ -222,7 +225,185 @@ def parse_lattes_xml(xml_path: str | Path) -> LattesExtract:
         source_format="xml",
         education=education,
         professional_activities=professional_activities,
-        cnpq_areas=ProvenancedList(values=cnpq_area_names, origin="lattes_xml"),
+        cnpq_areas=ProvenancedList(values=cnpq_area_names, origin="lattes_cv"),
+        languages=languages,
+        projects=projects,
+        publications=publications,
+    )
+
+
+_SECTION_HEADERS = [
+    "Formação acadêmica/titulação",
+    "Atuação Profissional",
+    "Áreas de atuação",
+    "Idiomas",
+    "Projetos de pesquisa",
+    "Produção bibliográfica",
+]
+
+_ORCID_RE = re.compile(r"\b\d{4}-\d{4}-\d{4}-\d{3}[\dXx]\b")
+_LAST_UPDATE_RE = re.compile(r"ultima atualizacao[^0-9]*(\d{2}/\d{2}/\d{4})")
+_EDUCATION_LINE_RE = re.compile(r"^\s*(\d{4})\s*-\s*(\d{4}|Atual)\s+(.+)$", re.IGNORECASE)
+_DOI_RE = re.compile(r"10\.\d{4,9}/\S+")
+_YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
+_EDUCATION_LEVEL_KEYWORDS = [
+    ("pos-doutorado", "pos-doutorado"),
+    ("doutorado", "doutorado"),
+    ("mestrado", "mestrado"),
+    ("gradua", "graduacao"),
+]
+
+
+def _strip_accents(text: str) -> str:
+    """Normalize accented Portuguese text for comparison/regex matching.
+
+    Used only to decide WHERE a header/keyword/date is, never to alter
+    the actual content stored in the returned model (titles/descriptions
+    keep their original accents).
+    """
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+def _split_sections(text: str) -> dict[str, str]:
+    """Split Lattes PDF extract text into named sections by known headers.
+
+    Best-effort: Lattes PDF exports are free-flowing prose, not tagged
+    data, so this relies on the section headers appearing verbatim as
+    their own line -- which is the common Lattes export layout, but not
+    guaranteed across every export version. Header matching is
+    accent/case-insensitive since PDF text extraction sometimes loses or
+    mangles diacritics.
+    """
+    normalized_headers = {_strip_accents(h).lower(): h for h in _SECTION_HEADERS}
+    lines = text.splitlines()
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in lines:
+        stripped_normalized = _strip_accents(line.strip()).lower()
+        matched_header = normalized_headers.get(stripped_normalized)
+        if matched_header:
+            current = matched_header
+            sections[current] = []
+            continue
+        if current is not None:
+            sections[current].append(line)
+    return {name: "\n".join(body) for name, body in sections.items()}
+
+
+def _parse_br_date(value: str) -> date | None:
+    """DD/MM/YYYY, as used in the Lattes PDF's 'last updated' footer line."""
+    try:
+        day, month, year = (int(part) for part in value.split("/"))
+        return date(year, month, day)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _education_level_from_text(text: str) -> str:
+    normalized = _strip_accents(text).lower()
+    for keyword, level in _EDUCATION_LEVEL_KEYWORDS:
+        if keyword in normalized:
+            return level
+    return "unknown"
+
+
+def parse_lattes_pdf(pdf_path: str | Path) -> LattesExtract:
+    """Best-effort fallback parser for a Lattes CV exported as PDF.
+
+    LOWER RELIABILITY than parse_lattes_xml: a Lattes PDF is free-flowing
+    prose with no tags, so this is regex/heuristic-based and can miss or
+    misparse entries that don't match the common Lattes export layout.
+    Callers (the SKILL.md flow) must surface source_format="pdf" to the
+    user as a reliability caveat, same as any other unverified extraction
+    in this project.
+    """
+    doc = pymupdf.open(str(pdf_path))
+    text = "\n".join(page.get_text() for page in doc)
+    doc.close()
+
+    full_name = next((line.strip() for line in text.splitlines() if line.strip()), "")
+
+    orcid_match = _ORCID_RE.search(text)
+    orcid = orcid_match.group(0) if orcid_match else None
+
+    last_update_match = _LAST_UPDATE_RE.search(_strip_accents(text).lower())
+    last_update = _parse_br_date(last_update_match.group(1)) if last_update_match else None
+
+    sections = _split_sections(text)
+
+    education: list[Education] = []
+    for line in sections.get("Formação acadêmica/titulação", "").splitlines():
+        match = _EDUCATION_LINE_RE.match(line)
+        if not match:
+            continue
+        start_year, end_token, description = match.groups()
+        institution = description.split(",", 1)[1].strip() if "," in description else ""
+        education.append(
+            Education(
+                level=_education_level_from_text(description),
+                institution=institution,
+                started=date(int(start_year), 1, 1),
+                finished=None if end_token.lower() == "atual" else date(int(end_token), 1, 1),
+            )
+        )
+
+    cnpq_area_names = [
+        line.strip(" .")
+        for line in sections.get("Áreas de atuação", "").splitlines()
+        if line.strip()
+    ]
+
+    languages: list[LanguageSkill] = []
+    for line in sections.get("Idiomas", "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        parts = stripped.split(None, 1)
+        if len(parts) == 2:
+            languages.append(LanguageSkill(language=parts[0], self_reported_proficiency=parts[1]))
+
+    projects_text = sections.get("Projetos de pesquisa", "")
+    projects: list[Project] = []
+    for block in re.split(r"\n(?=\d{4}\s*-\s*(?:\d{4}|Atual))", projects_text):
+        match = _EDUCATION_LINE_RE.match(block.splitlines()[0]) if block.strip() else None
+        if not match:
+            continue
+        start_year, end_token, title_line = match.groups()
+        rest = "\n".join(block.splitlines()[1:]).strip()
+        projects.append(
+            Project(
+                title=title_line.strip(),
+                description_raw=rest,
+                started=date(int(start_year), 1, 1),
+                finished=None if end_token.lower() == "atual" else date(int(end_token), 1, 1),
+            )
+        )
+
+    publications: list[Publication] = []
+    for line in sections.get("Produção bibliográfica", "").splitlines():
+        doi_match = _DOI_RE.search(line)
+        if not doi_match:
+            continue
+        year_match = _YEAR_RE.search(line)
+        title = line[: doi_match.start()].strip(" .;")
+        publications.append(
+            Publication(
+                title=title,
+                year=int(year_match.group(0)) if year_match else None,
+                doi=doi_match.group(0).rstrip(".,;"),
+                venue=None,
+            )
+        )
+
+    return LattesExtract(
+        full_name=full_name,
+        orcid=orcid,
+        last_update=last_update,
+        source_format="pdf",
+        education=education,
+        professional_activities=[],
+        cnpq_areas=ProvenancedList(values=cnpq_area_names, origin="lattes_cv"),
         languages=languages,
         projects=projects,
         publications=publications,
