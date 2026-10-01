@@ -4,9 +4,13 @@ import httpx
 
 from bolsa_finder.funding import (
     CAPES_PDSE_URL,
+    CAPES_PRINT_URL,
     DAAD_COFUNDED_GRANT_URL,
+    MSCA_POSTDOCTORAL_URL,
     fetch_capes_pdse,
+    fetch_capes_print,
     fetch_daad_cofunded_grant,
+    fetch_msca_postdoctoral,
     fetch_page_text,
 )
 
@@ -23,6 +27,20 @@ Who can apply? Doctoral candidates at universities in Brazil, who have been
 awarded a domestic scholarship from CAPES or one of the participating FAPs.
 {filler}</p></body></html>
 """.format(filler="y" * 100)
+
+CAPES_PRINT_SNIPPET_HTML = """
+<html><body><p>{filler}
+Promover a mobilidade de docentes e discentes, com ênfase em doutorandos,
+pós-doutorandos e docentes para o exterior e do exterior para o Brasil.
+{filler}</p></body></html>
+""".format(filler="z" * 100)
+
+MSCA_SNIPPET_HTML = """
+<html><body><p>{filler}
+These fellowships take place in an EU Member State or Horizon Europe
+Associated Country. Researchers of any nationality can apply.
+{filler}</p></body></html>
+""".format(filler="w" * 100)
 
 
 def _client(httpx_mock) -> httpx.Client:
@@ -92,3 +110,38 @@ def test_fetch_daad_cofunded_grant_end_to_end_with_mocked_http(httpx_mock) -> No
     assert opportunity.url == DAAD_COFUNDED_GRANT_URL
     assert opportunity.eligibility_brazilian == "confirmed"
     assert "Brazil" in opportunity.eligibility_evidence
+
+
+def test_fetch_capes_print_end_to_end_with_mocked_http(httpx_mock) -> None:
+    httpx_mock.add_response(url=CAPES_PRINT_URL, html=CAPES_PRINT_SNIPPET_HTML)
+
+    with httpx.Client() as client:
+        opportunity = fetch_capes_print(client, consulted_at=date(2026, 1, 15))
+
+    assert opportunity.agency == "CAPES"
+    assert opportunity.url == CAPES_PRINT_URL
+    assert "posdoc" in opportunity.target_levels
+    assert opportunity.eligibility_brazilian == "likely"
+    assert "doutorandos" in opportunity.eligibility_evidence
+
+
+def test_fetch_capes_print_unverified_when_page_unreachable(httpx_mock) -> None:
+    httpx_mock.add_response(url=CAPES_PRINT_URL, status_code=500)
+
+    with httpx.Client() as client:
+        opportunity = fetch_capes_print(client, consulted_at=date(2026, 1, 15))
+
+    assert opportunity.eligibility_brazilian == "unverified"
+    assert opportunity.eligibility_evidence is None
+
+
+def test_fetch_msca_postdoctoral_end_to_end_with_mocked_http(httpx_mock) -> None:
+    httpx_mock.add_response(url=MSCA_POSTDOCTORAL_URL, html=MSCA_SNIPPET_HTML)
+
+    with httpx.Client() as client:
+        opportunity = fetch_msca_postdoctoral(client, consulted_at=date(2026, 1, 15))
+
+    assert "MSCA" in opportunity.agency or "Horizon" in opportunity.agency
+    assert opportunity.url == MSCA_POSTDOCTORAL_URL
+    assert opportunity.eligibility_brazilian == "confirmed"
+    assert "any nationality" in opportunity.eligibility_evidence.lower()

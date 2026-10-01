@@ -1,11 +1,12 @@
 # Fontes de financiamento — Exterior
 
-Catálogo de agências/programas a investigar por região. Apenas o
-**DAAD Co-funded Research Grant** tem fetcher automatizado
-(`uv run bolsa-finder funding daad`). Para as demais, siga
-`references/elegibilidade.md` e monte o `FundingOpportunity` manualmente a
-partir da página oficial atual -- não reutilize valores ou prazos deste
-arquivo, que não leva URL/data de consulta e pode estar desatualizado.
+Catálogo de agências/programas a investigar por região. **DAAD Co-funded
+Research Grant** e **MSCA Postdoctoral Fellowships (European track)** têm
+fetcher automatizado (`uv run bolsa-finder funding daad` / `funding msca`).
+Para as demais, siga `references/elegibilidade.md` e monte o
+`FundingOpportunity` manualmente a partir da página oficial atual -- não
+reutilize valores ou prazos deste arquivo, que não leva URL/data de
+consulta e pode estar desatualizado.
 
 ## Alemanha
 
@@ -17,11 +18,17 @@ arquivo, que não leva URL/data de consulta e pode estar desatualizado.
 
 ## União Europeia
 
-- **MSCA (Marie Skłodowska-Curie Actions)** -- doutorados e pós-docs
-  financiados pela Comissão Europeia, geralmente sem restrição de
-  nacionalidade mas com regras de mobilidade (ex.: não ter residido no
-  país de destino recentemente). Checar a chamada vigente no portal
-  Euraxess/Horizon Europe.
+- **MSCA (Marie Skłodowska-Curie Actions) -- Postdoctoral Fellowships,
+  European track** -- automatizado. Elegível a pesquisadores de qualquer
+  nacionalidade (confirmado explicitamente na página oficial). **Atenção**:
+  isso NÃO cobre a trilha "Global Postdoctoral Fellowships" do mesmo
+  programa, que é restrita a nacionais/residentes de longo prazo da
+  UE/países associados -- não confundir as duas ao reportar ao candidato.
+- **MSCA Doctoral Networks** -- financia posições de doutorado em
+  consórcios, geralmente sem restrição de nacionalidade mas com regras de
+  mobilidade (ex.: não ter residido no país de destino recentemente há
+  mais de 12 meses). Checar a chamada vigente no portal
+  Euraxess/Horizon Europe -- não automatizado.
 - **Erasmus Mundus Joint Doctorates/Masters** -- consórcios específicos,
   cada um com seu próprio processo seletivo e critérios de elegibilidade
   geográfica.

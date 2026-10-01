@@ -71,3 +71,43 @@ def assess_daad_cofunded_grant(page_text: str) -> tuple[EligibilityLevel, str | 
     if evidence is None:
         return "unknown", None
     return "confirmed", evidence
+
+
+def assess_capes_print(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """Assess CAPES PrInt (institutional internationalization) eligibility.
+
+    Like PDSE, PrInt does not gate on nationality directly: mobility slots
+    (for doutorandos AND pós-doutorandos, unlike PDSE which is doctorate
+    only) are allocated by the participating Brazilian institution to its
+    own students/researchers. Marked "likely", not "confirmed" -- the
+    specific institution's internal selection rules must be checked.
+    """
+    evidence = find_evidence(
+        page_text,
+        [
+            "mobilidade de docentes e discentes, com ênfase em doutorandos",
+        ],
+    )
+    if evidence is None:
+        return "unknown", None
+    return "likely", evidence
+
+
+def assess_msca_postdoctoral(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """Assess MSCA European Postdoctoral Fellowships eligibility.
+
+    The official page states plainly that researchers of any nationality
+    can apply to the European track, so an explicit match is "confirmed".
+    This does NOT cover the separate Global Postdoctoral Fellowships track,
+    which is restricted to EU/associated-country nationals or long-term
+    residents -- that distinction must be kept in the report, not collapsed.
+    """
+    evidence = find_evidence(
+        page_text,
+        [
+            "Researchers of any nationality can apply",
+        ],
+    )
+    if evidence is None:
+        return "unknown", None
+    return "confirmed", evidence

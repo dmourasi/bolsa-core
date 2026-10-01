@@ -15,6 +15,7 @@ silently or guessing.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date
 from typing import Literal
 
@@ -25,7 +26,9 @@ from selectolax.parser import HTMLParser
 from bolsa_finder.eligibility import (
     EligibilityLevel,
     assess_capes_pdse,
+    assess_capes_print,
     assess_daad_cofunded_grant,
+    assess_msca_postdoctoral,
 )
 
 Unknown = Literal["unknown"]
@@ -82,68 +85,99 @@ DAAD_COFUNDED_GRANT_URL = (
     "?detail=57378178"
 )
 
+CAPES_PRINT_URL = (
+    "https://www.gov.br/capes/pt-br/acesso-a-informacao/acoes-e-programas/bolsas/"
+    "bolsas-e-auxilios-internacionais/informacoes-internacionais/"
+    "programa-institucional-de-internacionalizacao-capes-print"
+)
 
-def fetch_capes_pdse(client: httpx.Client, consulted_at: date | None = None) -> FundingOpportunity:
-    """CAPES PDSE: institutional sandwich-doctorate program abroad (Brazil track)."""
-    text = fetch_page_text(client, CAPES_PDSE_URL)
-    if text is None:
-        return FundingOpportunity(
-            name="Programa de Doutorado-Sanduíche no Exterior (PDSE)",
-            agency="CAPES",
-            country_or_region="Brasil (bolsa para período no exterior)",
-            target_levels=["sanduiche"],
-            amount="unknown",
-            deadline="unknown",
-            url=CAPES_PDSE_URL,
-            consulted_at=consulted_at or date.today(),
-            eligibility_brazilian="unverified",
-            eligibility_evidence=None,
-        )
+MSCA_POSTDOCTORAL_URL = "https://marie-sklodowska-curie-actions.ec.europa.eu/actions/postdoctoral-fellowships"
 
-    level, evidence = assess_capes_pdse(text)
+
+def _fetch_opportunity(
+    client: httpx.Client,
+    url: str,
+    assess: Callable[[str], tuple[EligibilityLevel, str | None]],
+    *,
+    name: str,
+    agency: str,
+    country_or_region: str,
+    target_levels: list[str],
+    consulted_at: date | None,
+) -> FundingOpportunity:
+    """Shared fetch -> assess -> FundingOpportunity flow used by every source.
+
+    Amount/deadline are always "unknown" here: none of the automated sources
+    state a single fixed value at the program-overview level (they vary per
+    edital/call), so this is never guessed from unrelated page text.
+    """
+    text = fetch_page_text(client, url)
+    level, evidence = assess(text) if text is not None else ("unverified", None)
     return FundingOpportunity(
-        name="Programa de Doutorado-Sanduíche no Exterior (PDSE)",
-        agency="CAPES",
-        country_or_region="Brasil (bolsa para período no exterior)",
-        target_levels=["sanduiche"],
-        # Amount/deadline vary per edital and per institution's annual quota;
-        # the overview page does not state a single fixed value for either.
+        name=name,
+        agency=agency,
+        country_or_region=country_or_region,
+        target_levels=target_levels,
         amount="unknown",
         deadline="unknown",
-        url=CAPES_PDSE_URL,
+        url=url,
         consulted_at=consulted_at or date.today(),
         eligibility_brazilian=level,
         eligibility_evidence=evidence,
     )
 
 
+def fetch_capes_pdse(client: httpx.Client, consulted_at: date | None = None) -> FundingOpportunity:
+    """CAPES PDSE: institutional sandwich-doctorate program abroad (Brazil track)."""
+    return _fetch_opportunity(
+        client,
+        CAPES_PDSE_URL,
+        assess_capes_pdse,
+        name="Programa de Doutorado-Sanduíche no Exterior (PDSE)",
+        agency="CAPES",
+        country_or_region="Brasil (bolsa para período no exterior)",
+        target_levels=["sanduiche"],
+        consulted_at=consulted_at,
+    )
+
+
 def fetch_daad_cofunded_grant(client: httpx.Client, consulted_at: date | None = None) -> FundingOpportunity:
     """DAAD co-funded short-term research grant for Brazilian doctoral candidates."""
-    text = fetch_page_text(client, DAAD_COFUNDED_GRANT_URL)
-    if text is None:
-        return FundingOpportunity(
-            name="Co-funded Research Grants (short-term research stay in Germany)",
-            agency="DAAD",
-            country_or_region="Germany (for Brazilian doctoral candidates)",
-            target_levels=["sanduiche"],
-            amount="unknown",
-            deadline="unknown",
-            url=DAAD_COFUNDED_GRANT_URL,
-            consulted_at=consulted_at or date.today(),
-            eligibility_brazilian="unverified",
-            eligibility_evidence=None,
-        )
-
-    level, evidence = assess_daad_cofunded_grant(text)
-    return FundingOpportunity(
+    return _fetch_opportunity(
+        client,
+        DAAD_COFUNDED_GRANT_URL,
+        assess_daad_cofunded_grant,
         name="Co-funded Research Grants (short-term research stay in Germany)",
         agency="DAAD",
         country_or_region="Germany (for Brazilian doctoral candidates)",
         target_levels=["sanduiche"],
-        amount="unknown",
-        deadline="unknown",
-        url=DAAD_COFUNDED_GRANT_URL,
-        consulted_at=consulted_at or date.today(),
-        eligibility_brazilian=level,
-        eligibility_evidence=evidence,
+        consulted_at=consulted_at,
+    )
+
+
+def fetch_capes_print(client: httpx.Client, consulted_at: date | None = None) -> FundingOpportunity:
+    """CAPES PrInt: institutional internationalization mobility (doctorate + postdoc)."""
+    return _fetch_opportunity(
+        client,
+        CAPES_PRINT_URL,
+        assess_capes_print,
+        name="Programa Institucional de Internacionalização (CAPES PrInt)",
+        agency="CAPES",
+        country_or_region="Brasil (mobilidade para o exterior e do exterior para o Brasil)",
+        target_levels=["sanduiche", "posdoc"],
+        consulted_at=consulted_at,
+    )
+
+
+def fetch_msca_postdoctoral(client: httpx.Client, consulted_at: date | None = None) -> FundingOpportunity:
+    """MSCA European Postdoctoral Fellowships (Horizon Europe, EU)."""
+    return _fetch_opportunity(
+        client,
+        MSCA_POSTDOCTORAL_URL,
+        assess_msca_postdoctoral,
+        name="MSCA Postdoctoral Fellowships (European track)",
+        agency="European Commission / Horizon Europe (MSCA)",
+        country_or_region="European Union / Horizon Europe Associated Countries",
+        target_levels=["posdoc"],
+        consulted_at=consulted_at,
     )

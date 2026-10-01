@@ -1,31 +1,43 @@
 # Fontes de financiamento — Brasil
 
-Catálogo de agências/programas a investigar. Apenas **CAPES PDSE** tem
-fetcher automatizado (`uv run bolsa-finder funding capes-pdse`). Para as
-demais, siga `references/elegibilidade.md` e monte o `FundingOpportunity`
-manualmente a partir da página oficial atual -- não reutilize valores ou
-prazos deste arquivo, que não leva URL/data de consulta e pode estar
-desatualizado.
+Catálogo de agências/programas a investigar. **CAPES PDSE** e **CAPES
+PrInt** têm fetcher automatizado
+(`uv run bolsa-finder funding capes-pdse` / `funding capes-print`). Para
+as demais, siga `references/elegibilidade.md` e monte o
+`FundingOpportunity` manualmente a partir da página oficial atual -- não
+reutilize valores ou prazos deste arquivo, que não leva URL/data de
+consulta e pode estar desatualizado.
 
 ## CAPES (Coordenação de Aperfeiçoamento de Pessoal de Nível Superior)
 
-- **PDSE** (Doutorado-Sanduíche no Exterior) -- automatizado. Elegibilidade
-  é institucional/por edital, não só nacionalidade; ver
-  `references/elegibilidade.md`.
-- **PRINT** (Programa Institucional de Internacionalização) -- bolsas de
-  mobilidade geridas pelas próprias IES, critérios variam por
-  universidade/edital interno. Buscar o edital PRINT da instituição do
-  candidato.
-- Bolsas de pós-doutorado e outras modalidades de mobilidade -- checar a
-  seção de "Bolsas e Auxílios Internacionais" no site da CAPES para o
-  programa/país de interesse.
+- **PDSE** (Doutorado-Sanduíche no Exterior) -- automatizado. Cobre só
+  doutorado. Elegibilidade é institucional/por edital, não só
+  nacionalidade; ver `references/elegibilidade.md`.
+- **PrInt** (Programa Institucional de Internacionalização) -- automatizado.
+  Cobre mobilidade de doutorandos E pós-doutorandos, mas as vagas são
+  geridas pelas próprias IES participantes; critérios finais variam por
+  universidade/edital interno. Buscar o edital PrInt da instituição do
+  candidato para confirmar.
+- Outras modalidades de mobilidade -- checar a seção de "Bolsas e Auxílios
+  Internacionais" no site da CAPES para o programa/país de interesse.
 
 ## CNPq (Conselho Nacional de Desenvolvimento Científico e Tecnológico)
 
 - Bolsas de doutorado-sanduíche (SWE -- Doutorado Sanduíche no Exterior) e
   pós-doutorado (PDJ -- Pós-Doutorado Júnior, e modalidades de
-  pós-doutorado no exterior). Critérios de elegibilidade e cotas variam
-  por chamada; buscar a chamada vigente no site do CNPq.
+  pós-doutorado no exterior). **Não automatizado**: o CNPq não mantém uma
+  página de programa permanente -- cada modalidade é aberta por "chamada"
+  com URL e prazo próprios, que mudam a cada edital. Buscar a chamada
+  vigente em gov.br/cnpq e montar o `FundingOpportunity` manualmente.
+
+## FAPESP (Fundação de Amparo à Pesquisa do Estado de São Paulo)
+
+- **BEPE** (Bolsa Estágio de Pesquisa no Exterior) -- programa permanente,
+  mas a página oficial (`fapesp.br/bolsas/bepe`) é renderizada via
+  JavaScript e retorna corpo vazio para `httpx`+`selectolax`. **Não
+  automatizado** por essa razão (ver regra de páginas dinâmicas em
+  `references/elegibilidade.md`); se for investigar, use WebFetch/
+  navegador e marque `unverified` caso não consiga extrair o texto.
 
 ## FAPs estaduais (Fundações de Amparo à Pesquisa)
 
