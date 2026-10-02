@@ -93,6 +93,55 @@ def assess_capes_print(page_text: str) -> tuple[EligibilityLevel, str | None]:
     return "likely", evidence
 
 
+def assess_cnpq_swe(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """Assess CNPq SWE (Doutorado Sanduíche no Exterior) eligibility.
+
+    Same indirect pattern as PDSE: gates on being enrolled in a doctoral
+    program in Brazil, not on nationality directly, so "likely" not
+    "confirmed".
+    """
+    evidence = find_evidence(
+        page_text,
+        [
+            "aluno formalmente matriculado em curso de doutorado no Brasil",
+        ],
+    )
+    if evidence is None:
+        return "unknown", None
+    return "likely", evidence
+
+
+def assess_cnpq_no_explicit_criteria(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """For CNPq modalities (GDE, PDE, MPE) whose entry on the shared
+    "Modalidades" page only states purpose/benefits/duration -- no
+    nationality or Brazil-institution-link text appears there at all.
+    Always "unknown": there is nothing on this specific page to cite, so
+    nothing is claimed. A specific edital must be checked for the real rule.
+    """
+    return "unknown", None
+
+
+def assess_faperj_doutorado_sanduiche(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """Assess FAPERJ's Doutorado Sanduíche (Estágio de Doutorando no Exterior).
+
+    This program page explicitly states the scholar must hold Brazilian
+    nationality (or a permanent visa for foreign researchers), so an
+    explicit match is "confirmed". It additionally requires enrollment in
+    a doctoral program at a Rio de Janeiro state institution -- a second,
+    narrower constraint the report should still surface via the evidence
+    excerpt even though it doesn't change the nationality-eligibility level.
+    """
+    evidence = find_evidence(
+        page_text,
+        [
+            "Ter nacionalidade brasileira ou visto permanente no Brasil",
+        ],
+    )
+    if evidence is None:
+        return "unknown", None
+    return "confirmed", evidence
+
+
 def assess_msca_postdoctoral(page_text: str) -> tuple[EligibilityLevel, str | None]:
     """Assess MSCA European Postdoctoral Fellowships eligibility.
 

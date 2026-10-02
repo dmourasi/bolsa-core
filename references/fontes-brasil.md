@@ -1,12 +1,13 @@
 # Fontes de financiamento — Brasil
 
-Catálogo de agências/programas a investigar. **CAPES PDSE** e **CAPES
-PrInt** têm fetcher automatizado
-(`uv run bolsa-finder funding capes-pdse` / `funding capes-print`). Para
-as demais, siga `references/elegibilidade.md` e monte o
-`FundingOpportunity` manualmente a partir da página oficial atual -- não
-reutilize valores ou prazos deste arquivo, que não leva URL/data de
-consulta e pode estar desatualizado.
+Catálogo de agências/programas a investigar. **CAPES PDSE**, **CAPES
+PrInt**, **CNPq** (4 modalidades) e **FAPERJ** têm fetcher automatizado
+(`uv run bolsa-finder funding capes-pdse` / `capes-print` / `cnpq` /
+`faperj`, ou `funding applicable <target_level>` para já filtrar pelo
+nível do candidato). Para as demais, siga `references/elegibilidade.md`
+e monte o `FundingOpportunity` manualmente a partir da página oficial
+atual -- não reutilize valores ou prazos deste arquivo, que não leva
+URL/data de consulta e pode estar desatualizado.
 
 ## CAPES (Coordenação de Aperfeiçoamento de Pessoal de Nível Superior)
 
@@ -23,12 +24,20 @@ consulta e pode estar desatualizado.
 
 ## CNPq (Conselho Nacional de Desenvolvimento Científico e Tecnológico)
 
-- Bolsas de doutorado-sanduíche (SWE -- Doutorado Sanduíche no Exterior) e
-  pós-doutorado (PDJ -- Pós-Doutorado Júnior, e modalidades de
-  pós-doutorado no exterior). **Não automatizado**: o CNPq não mantém uma
-  página de programa permanente -- cada modalidade é aberta por "chamada"
-  com URL e prazo próprios, que mudam a cada edital. Buscar a chamada
-  vigente em gov.br/cnpq e montar o `FundingOpportunity` manualmente.
+- **Modalidades no exterior** (GDE -- Doutorado Pleno, SWE -- Doutorado
+  Sanduíche, MPE -- Mestrado Profissional, PDE -- Pós-Doutorado) --
+  automatizado via a página "Modalidades" (purpose/benefícios/duração,
+  não um edital específico, então não expira como as chamadas abaixo).
+  **Atenção**: só SWE tem texto de elegibilidade nessa página (vínculo
+  institucional no Brasil, `likely`); GDE/MPE/PDE ficam honestamente
+  `unknown` -- a página não diz nada sobre nacionalidade/vínculo para
+  eles, então nada é afirmado. GDE e MPE são hoje as ÚNICAS fontes
+  automatizadas para os níveis `pleno` e `mestrado`, respectivamente.
+- **Chamadas específicas** (ex.: editais bilaterais CNPq/agência
+  estrangeira) -- **não automatizado**: cada modalidade/parceria abre por
+  "chamada" com URL e prazo próprios que mudam a cada edital. Buscar a
+  chamada vigente em gov.br/cnpq e montar o `FundingOpportunity`
+  manualmente para valor/prazo específicos.
 
 ## FAPESP (Fundação de Amparo à Pesquisa do Estado de São Paulo)
 
@@ -41,12 +50,26 @@ consulta e pode estar desatualizado.
 
 ## FAPs estaduais (Fundações de Amparo à Pesquisa)
 
-Relevantes para o perfil do candidato conforme a instituição de origem,
-ex.: FAPESP (SP), FAPEMIG (MG), FAPERJ (RJ), FACEPE (PE), entre outras.
+Relevantes para o perfil do candidato conforme a instituição de origem.
 Muitas têm programas próprios de bolsa-sanduíche/pós-doc com regras de
 elegibilidade específicas (algumas exigem vínculo prévio com a instituição
-do estado). Buscar o programa da FAP correspondente à instituição do
-candidato.
+do estado).
+
+- **FAPERJ** (Rio de Janeiro) -- **automatizado** (`funding faperj`).
+  "Doutorado Sanduíche (Estágio de Doutorando no Exterior)" tem página de
+  programa permanente e estática, com elegibilidade explícita
+  (`confirmed`: exige nacionalidade brasileira OU visto permanente, e
+  matrícula em doutorado avaliado pela CAPES com conceito ≥3 em
+  instituição sediada no RJ -- essa segunda restrição geográfica deve ser
+  checada contra o perfil do candidato antes de recomendar).
+- **FAPESP** (São Paulo) -- **não automatizado**: a página do programa
+  BEPE é renderizada via JavaScript (corpo vazio para
+  `httpx`+`selectolax`); ver seção CNPq/FAPESP acima.
+- **FAPEMIG** (Minas Gerais), **FACEPE** (Pernambuco), demais FAPs --
+  **não automatizadas ainda**. Têm programas de bolsa-sanduíche/pós-doc
+  (ex.: FAPEMIG PCRH), mas publicados como "chamadas" com URL/prazo que
+  mudam a cada edital, igual ao padrão do CNPq -- buscar a chamada
+  vigente no site da FAP e montar o `FundingOpportunity` manualmente.
 
 ## Editais de mobilidade específicos
 

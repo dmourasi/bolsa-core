@@ -27,7 +27,10 @@ from bolsa_finder.eligibility import (
     EligibilityLevel,
     assess_capes_pdse,
     assess_capes_print,
+    assess_cnpq_no_explicit_criteria,
+    assess_cnpq_swe,
     assess_daad_cofunded_grant,
+    assess_faperj_doutorado_sanduiche,
     assess_msca_postdoctoral,
 )
 
@@ -92,6 +95,10 @@ CAPES_PRINT_URL = (
 )
 
 MSCA_POSTDOCTORAL_URL = "https://marie-sklodowska-curie-actions.ec.europa.eu/actions/postdoctoral-fellowships"
+
+CNPQ_MODALIDADES_URL = "https://www.gov.br/cnpq/pt-br/acesso-a-informacao/bolsas-e-auxilios/copy_of_modalidades/bolsas-modalidades"
+
+FAPERJ_DOUTORADO_SANDUICHE_URL = "https://www.faperj.br/?id=86.5.1"
 
 
 def _fetch_opportunity(
@@ -183,14 +190,72 @@ def fetch_msca_postdoctoral(client: httpx.Client, consulted_at: date | None = No
     )
 
 
+def fetch_faperj_doutorado_sanduiche(client: httpx.Client, consulted_at: date | None = None) -> FundingOpportunity:
+    """FAPERJ Doutorado Sanduíche (Estágio de Doutorando no Exterior) -- first
+    state-agency (FAP) source automated end-to-end."""
+    return _fetch_opportunity(
+        client,
+        FAPERJ_DOUTORADO_SANDUICHE_URL,
+        assess_faperj_doutorado_sanduiche,
+        name="Doutorado Sanduíche (Estágio de Doutorando no Exterior)",
+        agency="FAPERJ",
+        country_or_region="Rio de Janeiro, Brasil (bolsa para período no exterior)",
+        target_levels=["sanduiche"],
+        consulted_at=consulted_at,
+    )
+
+
+# CNPq's "Modalidades" page covers four levels in one page, each with its own
+# assessor (see eligibility.py) -- fetched once and split into four
+# FundingOpportunity records rather than hitting the same URL four times.
+_CNPQ_MODALITIES = [
+    ("Doutorado Pleno no Exterior (GDE)", ["pleno"], assess_cnpq_no_explicit_criteria),
+    ("Doutorado-Sanduíche no Exterior (SWE)", ["sanduiche"], assess_cnpq_swe),
+    ("Mestrado Profissional no Exterior (MPE)", ["mestrado"], assess_cnpq_no_explicit_criteria),
+    ("Pós-Doutorado no Exterior (PDE)", ["posdoc"], assess_cnpq_no_explicit_criteria),
+]
+
+
+def fetch_cnpq_modalities(client: httpx.Client, consulted_at: date | None = None) -> list[FundingOpportunity]:
+    """CNPq's national funding-abroad modalities: GDE, SWE, MPE, PDE.
+
+    GDE/MPE/PDE are the only automated coverage for "pleno"/"mestrado"
+    today, but this specific overview page states purpose/benefits/
+    duration, not nationality criteria, for those three -- their
+    eligibility_brazilian is honestly "unknown", not guessed as "likely"
+    just because SWE's section happens to have a usable proxy phrase.
+    """
+    text = fetch_page_text(client, CNPQ_MODALIDADES_URL)
+    consulted = consulted_at or date.today()
+    opportunities = []
+    for name, target_levels, assess in _CNPQ_MODALITIES:
+        level, evidence = assess(text) if text is not None else ("unverified", None)
+        opportunities.append(
+            FundingOpportunity(
+                name=name,
+                agency="CNPq",
+                country_or_region="Brasil (bolsa para período/programa no exterior)",
+                target_levels=target_levels,
+                amount="unknown",
+                deadline="unknown",
+                url=CNPQ_MODALIDADES_URL,
+                consulted_at=consulted,
+                eligibility_brazilian=level,
+                eligibility_evidence=evidence,
+            )
+        )
+    return opportunities
+
+
 # Every fetcher that is fully automated end-to-end (see references/fontes-*.md
 # for sources that are catalogued but NOT here because they require manual
-# investigation -- CNPq, FAPESP, MSCA Doctoral Networks, etc).
+# investigation -- CNPq chamadas, FAPESP, MSCA Doctoral Networks, etc).
 ALL_FETCHERS: list[Callable[[httpx.Client, date | None], FundingOpportunity]] = [
     fetch_capes_pdse,
     fetch_capes_print,
     fetch_daad_cofunded_grant,
     fetch_msca_postdoctoral,
+    fetch_faperj_doutorado_sanduiche,
 ]
 
 
@@ -200,7 +265,9 @@ def fetch_all_automated_opportunities(
     """Fetch every automated source. Each item still carries its own
     eligibility_brazilian/evidence -- this just aggregates, it does not
     filter or interpret anything."""
-    return [fetcher(client, consulted_at) for fetcher in ALL_FETCHERS]
+    opportunities = [fetcher(client, consulted_at) for fetcher in ALL_FETCHERS]
+    opportunities.extend(fetch_cnpq_modalities(client, consulted_at))
+    return opportunities
 
 
 def opportunities_for_target_level(

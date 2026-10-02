@@ -1,7 +1,10 @@
 from bolsa_finder.eligibility import (
     assess_capes_pdse,
     assess_capes_print,
+    assess_cnpq_no_explicit_criteria,
+    assess_cnpq_swe,
     assess_daad_cofunded_grant,
+    assess_faperj_doutorado_sanduiche,
     assess_msca_postdoctoral,
     find_evidence,
 )
@@ -91,6 +94,55 @@ def test_assess_msca_confirmed_when_any_nationality_clause_present() -> None:
 
 def test_assess_msca_unknown_when_text_does_not_match() -> None:
     level, evidence = assess_msca_postdoctoral("completely unrelated page content")
+
+    assert level == "unknown"
+    assert evidence is None
+
+
+def test_assess_cnpq_swe_likely_when_institutional_enrollment_text_present() -> None:
+    page_text = (
+        "Apoia aluno formalmente matriculado em curso de doutorado no Brasil "
+        "que comprove qualificação inequívoca."
+    )
+
+    level, evidence = assess_cnpq_swe(page_text)
+
+    assert level == "likely"
+    assert "matriculado em curso de doutorado" in evidence
+
+
+def test_assess_cnpq_swe_unknown_when_text_does_not_match() -> None:
+    level, evidence = assess_cnpq_swe("completely unrelated page content")
+
+    assert level == "unknown"
+    assert evidence is None
+
+
+def test_assess_cnpq_no_explicit_criteria_is_always_unknown() -> None:
+    # Even text that sounds eligibility-adjacent must not be matched --
+    # this assessor is used precisely where the page has no such text.
+    level, evidence = assess_cnpq_no_explicit_criteria(
+        "Ter nacionalidade brasileira. Requisitos e condições a seguir."
+    )
+
+    assert level == "unknown"
+    assert evidence is None
+
+
+def test_assess_faperj_confirmed_when_nationality_clause_present() -> None:
+    page_text = (
+        "Do bolsista Ter nacionalidade brasileira ou visto permanente no Brasil "
+        "atualizado, no caso de pesquisador estrangeiro."
+    )
+
+    level, evidence = assess_faperj_doutorado_sanduiche(page_text)
+
+    assert level == "confirmed"
+    assert "nacionalidade brasileira" in evidence.lower()
+
+
+def test_assess_faperj_unknown_when_text_does_not_match() -> None:
+    level, evidence = assess_faperj_doutorado_sanduiche("completely unrelated page content")
 
     assert level == "unknown"
     assert evidence is None
