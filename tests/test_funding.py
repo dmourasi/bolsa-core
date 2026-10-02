@@ -7,11 +7,14 @@ from bolsa_finder.funding import (
     CAPES_PRINT_URL,
     DAAD_COFUNDED_GRANT_URL,
     MSCA_POSTDOCTORAL_URL,
+    FundingOpportunity,
+    fetch_all_automated_opportunities,
     fetch_capes_pdse,
     fetch_capes_print,
     fetch_daad_cofunded_grant,
     fetch_msca_postdoctoral,
     fetch_page_text,
+    opportunities_for_target_level,
 )
 
 CAPES_SNIPPET_HTML = """
@@ -145,3 +148,51 @@ def test_fetch_msca_postdoctoral_end_to_end_with_mocked_http(httpx_mock) -> None
     assert opportunity.url == MSCA_POSTDOCTORAL_URL
     assert opportunity.eligibility_brazilian == "confirmed"
     assert "any nationality" in opportunity.eligibility_evidence.lower()
+
+
+def _opportunity(**overrides) -> FundingOpportunity:
+    defaults = dict(
+        name="Test Opportunity",
+        agency="Test Agency",
+        country_or_region="Testland",
+        target_levels=["sanduiche"],
+        amount="unknown",
+        deadline="unknown",
+        url="https://example.com",
+        consulted_at=date(2026, 1, 1),
+        eligibility_brazilian="confirmed",
+        eligibility_evidence=None,
+    )
+    defaults.update(overrides)
+    return FundingOpportunity(**defaults)
+
+
+def test_opportunities_for_target_level_filters_by_membership() -> None:
+    sanduiche_only = _opportunity(name="A", target_levels=["sanduiche"])
+    posdoc_only = _opportunity(name="B", target_levels=["posdoc"])
+    both = _opportunity(name="C", target_levels=["sanduiche", "posdoc"])
+
+    result = opportunities_for_target_level([sanduiche_only, posdoc_only, both], "posdoc")
+
+    assert {o.name for o in result} == {"B", "C"}
+
+
+def test_opportunities_for_target_level_empty_for_uncovered_level() -> None:
+    sanduiche_only = _opportunity(name="A", target_levels=["sanduiche"])
+
+    result = opportunities_for_target_level([sanduiche_only], "mestrado")
+
+    assert result == []
+
+
+def test_fetch_all_automated_opportunities_fetches_every_source(httpx_mock) -> None:
+    httpx_mock.add_response(url=CAPES_PDSE_URL, html=CAPES_SNIPPET_HTML)
+    httpx_mock.add_response(url=CAPES_PRINT_URL, html=CAPES_PRINT_SNIPPET_HTML)
+    httpx_mock.add_response(url=DAAD_COFUNDED_GRANT_URL, html=DAAD_SNIPPET_HTML)
+    httpx_mock.add_response(url=MSCA_POSTDOCTORAL_URL, html=MSCA_SNIPPET_HTML)
+
+    with httpx.Client() as client:
+        opportunities = fetch_all_automated_opportunities(client, consulted_at=date(2026, 1, 15))
+
+    assert len(opportunities) == 4
+    assert {o.agency for o in opportunities} == {"CAPES", "DAAD", "European Commission / Horizon Europe (MSCA)"}

@@ -181,3 +181,36 @@ def fetch_msca_postdoctoral(client: httpx.Client, consulted_at: date | None = No
         target_levels=["posdoc"],
         consulted_at=consulted_at,
     )
+
+
+# Every fetcher that is fully automated end-to-end (see references/fontes-*.md
+# for sources that are catalogued but NOT here because they require manual
+# investigation -- CNPq, FAPESP, MSCA Doctoral Networks, etc).
+ALL_FETCHERS: list[Callable[[httpx.Client, date | None], FundingOpportunity]] = [
+    fetch_capes_pdse,
+    fetch_capes_print,
+    fetch_daad_cofunded_grant,
+    fetch_msca_postdoctoral,
+]
+
+
+def fetch_all_automated_opportunities(
+    client: httpx.Client, consulted_at: date | None = None
+) -> list[FundingOpportunity]:
+    """Fetch every automated source. Each item still carries its own
+    eligibility_brazilian/evidence -- this just aggregates, it does not
+    filter or interpret anything."""
+    return [fetcher(client, consulted_at) for fetcher in ALL_FETCHERS]
+
+
+def opportunities_for_target_level(
+    opportunities: list[FundingOpportunity], target_level: str
+) -> list[FundingOpportunity]:
+    """Filter to opportunities whose target_levels include target_level.
+
+    An empty result is not an error: it honestly means none of the
+    AUTOMATED sources cover that level (e.g. "mestrado"/"pleno" today) --
+    see references/fontes-*.md for sources to check manually instead of
+    assuming none exist.
+    """
+    return [o for o in opportunities if target_level in o.target_levels]
