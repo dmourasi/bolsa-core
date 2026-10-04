@@ -161,6 +161,51 @@ def assess_fapesb_posdoutorado(page_text: str) -> tuple[EligibilityLevel, str | 
     return "likely", evidence
 
 
+def assess_fapeam_dex(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """Assess FAPEAM DEX (Doutorado no exterior -- full PhD abroad, "pleno").
+
+    Gates on being accepted/enrolled in a doctoral program, not
+    nationality directly, so "likely" not "confirmed".
+    """
+    evidence = find_evidence(
+        page_text,
+        ["Ter sido aceito(a) ou estar regularmente matriculado(a) em Programa de Doutoramento"],
+    )
+    if evidence is None:
+        return "unknown", None
+    return "likely", evidence
+
+
+def assess_fapeam_dsex(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """Assess FAPEAM DSEX (Doutorado Sanduíche no exterior).
+
+    Gates on enrollment in a CAPES-recognized doctoral program at an
+    Amazonas institution -- indirect, so "likely" not "confirmed".
+    """
+    evidence = find_evidence(
+        page_text,
+        ["regularmente matriculado(a) em Programa de Doutoramento reconhecido pela CAPES em instituição do Amazonas"],
+    )
+    if evidence is None:
+        return "unknown", None
+    return "likely", evidence
+
+
+def assess_fapeam_pdext(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """Assess FAPEAM PDEXT (Pós-Doutorado no exterior).
+
+    Gates on an employment link to a higher-ed/research institution
+    (IPES) in Amazonas, not nationality directly, so "likely".
+    """
+    evidence = find_evidence(
+        page_text,
+        ["Ter vínculo empregatício com IPES do Estado do Amazonas"],
+    )
+    if evidence is None:
+        return "unknown", None
+    return "likely", evidence
+
+
 def assess_msca_postdoctoral(page_text: str) -> tuple[EligibilityLevel, str | None]:
     """Assess MSCA European Postdoctoral Fellowships eligibility.
 

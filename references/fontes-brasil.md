@@ -1,13 +1,14 @@
 # Fontes de financiamento — Brasil
 
 Catálogo de agências/programas a investigar. **CAPES PDSE**, **CAPES
-PrInt**, **CNPq** (4 modalidades), **FAPERJ** e **FAPESB** têm fetcher
-automatizado (`uv run bolsa-finder funding capes-pdse` / `capes-print` /
-`cnpq` / `faperj` / `fapesb`, ou `funding applicable <target_level>` para
-já filtrar pelo nível do candidato). Para as demais, siga
-`references/elegibilidade.md` e monte o `FundingOpportunity` manualmente
-a partir da página oficial atual -- não reutilize valores ou prazos deste
-arquivo, que não leva URL/data de consulta e pode estar desatualizado.
+PrInt**, **CNPq** (4 modalidades), **FAPERJ**, **FAPESB** e **FAPEAM**
+(3 modalidades) têm fetcher automatizado (`uv run bolsa-finder funding
+capes-pdse` / `capes-print` / `cnpq` / `faperj` / `fapesb` / `fapeam`, ou
+`funding applicable <target_level>` para já filtrar pelo nível do
+candidato). Para as demais, siga `references/elegibilidade.md` e monte o
+`FundingOpportunity` manualmente a partir da página oficial atual -- não
+reutilize valores ou prazos deste arquivo, que não leva URL/data de
+consulta e pode estar desatualizado.
 
 ## CAPES (Coordenação de Aperfeiçoamento de Pessoal de Nível Superior)
 
@@ -66,15 +67,27 @@ do estado).
   2 (PD2)" tem página de programa permanente e estática. Elegibilidade é
   por vínculo institucional com instituição sediada na Bahia (`likely`,
   mesmo padrão indireto do PDSE/SWE), não nacionalidade explícita.
+- **FAPEAM** (Amazonas) -- **automatizado** (`funding fapeam`). A "Tabela
+  de Bolsas no Exterior" é uma página permanente de tabela (mesmo padrão
+  do CNPq/Modalidades) cobrindo DEX (pleno), DSEX (sanduíche) e PDEXT
+  (pós-doc) -- mas, diferente do CNPq, **as três** têm texto de
+  elegibilidade real (vínculo/matrícula em instituição do Amazonas,
+  `likely`), não só a modalidade sanduíche. Hoje é a única fonte
+  automatizada com elegibilidade real (não `unknown`) para `pleno`.
 - **FAPESP** (São Paulo) -- **não automatizado**: a página do programa
   BEPE é renderizada via JavaScript (corpo vazio para
   `httpx`+`selectolax`); ver seção CNPq/FAPESP acima.
-- **FAPEMIG** (Minas Gerais), **FACEPE** (Pernambuco), **FAPERGS** (Rio
-  Grande do Sul), demais FAPs -- **não automatizadas ainda**. Têm
-  programas de bolsa-sanduíche/pós-doc (ex.: FAPEMIG PCRH), mas
-  publicados como "chamadas" com URL/prazo que mudam a cada edital, igual
-  ao padrão do CNPq -- buscar a chamada vigente no site da FAP e montar o
-  `FundingOpportunity` manualmente.
+- **FAPEMIG** (MG), **FACEPE** (PE), **FAPERGS** (RS), **Fundação
+  Araucária** (PR), **FAPESC** (SC), **FAPEG** (GO), **FUNCAP** (CE),
+  **FAPES** (ES), **FAPDF** (DF), **FAPESQ** (PB), **FAPERN** (RN),
+  **FAPEMAT** (MT), demais FAPs -- **não automatizadas**. Todas
+  verificadas nesta sessão: têm programas de bolsa-sanduíche/pós-doc, mas
+  publicados exclusivamente como "chamadas" com URL/prazo que mudam a
+  cada edital (mesmo padrão do CNPq específico) -- nenhuma tem página de
+  programa permanente como FAPERJ/FAPESB/FAPEAM. Buscar a chamada vigente
+  no site da FAP e montar o `FundingOpportunity` manualmente. FAPs ainda
+  não verificadas: FAPEAL, FAPEMA, FAPEPI, FAPERO, FAPAC, FAPERR, FAPEAP,
+  FAPT/FAPTO, FAPESPA, FAPITEC/FAPESE, FUNDECT (MS).
 
 ## Editais de mobilidade específicos
 

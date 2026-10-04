@@ -4,6 +4,9 @@ from bolsa_finder.eligibility import (
     assess_cnpq_no_explicit_criteria,
     assess_cnpq_swe,
     assess_daad_cofunded_grant,
+    assess_fapeam_dex,
+    assess_fapeam_dsex,
+    assess_fapeam_pdext,
     assess_fapesb_posdoutorado,
     assess_faperj_doutorado_sanduiche,
     assess_msca_postdoctoral,
@@ -164,6 +167,57 @@ def test_assess_fapesb_likely_when_institutional_link_text_present() -> None:
 
 def test_assess_fapesb_unknown_when_text_does_not_match() -> None:
     level, evidence = assess_fapesb_posdoutorado("completely unrelated page content")
+
+    assert level == "unknown"
+    assert evidence is None
+
+
+def test_assess_fapeam_dex_likely_when_enrollment_text_present() -> None:
+    page_text = "ÚNICO Ter sido aceito(a) ou estar regularmente matriculado(a) em Programa de Doutoramento."
+
+    level, evidence = assess_fapeam_dex(page_text)
+
+    assert level == "likely"
+    assert "Programa de Doutoramento" in evidence
+
+
+def test_assess_fapeam_dex_unknown_when_text_does_not_match() -> None:
+    level, evidence = assess_fapeam_dex("completely unrelated page content")
+
+    assert level == "unknown"
+    assert evidence is None
+
+
+def test_assess_fapeam_dsex_likely_when_amazonas_enrollment_text_present() -> None:
+    page_text = (
+        "ÚNICO Estar regularmente matriculado(a) em Programa de Doutoramento "
+        "reconhecido pela CAPES em instituição do Amazonas no Amazonas."
+    )
+
+    level, evidence = assess_fapeam_dsex(page_text)
+
+    assert level == "likely"
+    assert "instituição do Amazonas" in evidence
+
+
+def test_assess_fapeam_dsex_unknown_when_text_does_not_match() -> None:
+    level, evidence = assess_fapeam_dsex("completely unrelated page content")
+
+    assert level == "unknown"
+    assert evidence is None
+
+
+def test_assess_fapeam_pdext_likely_when_employment_link_text_present() -> None:
+    page_text = "ÚNICO Ter vínculo empregatício com IPES do Estado do Amazonas."
+
+    level, evidence = assess_fapeam_pdext(page_text)
+
+    assert level == "likely"
+    assert "IPES do Estado do Amazonas" in evidence
+
+
+def test_assess_fapeam_pdext_unknown_when_text_does_not_match() -> None:
+    level, evidence = assess_fapeam_pdext("completely unrelated page content")
 
     assert level == "unknown"
     assert evidence is None

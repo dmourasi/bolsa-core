@@ -7,6 +7,7 @@ from bolsa_finder.funding import (
     CAPES_PRINT_URL,
     CNPQ_MODALIDADES_URL,
     DAAD_COFUNDED_GRANT_URL,
+    FAPEAM_BOLSAS_EXTERIOR_URL,
     FAPERJ_DOUTORADO_SANDUICHE_URL,
     FAPESB_POSDOUTORADO_URL,
     MSCA_POSTDOCTORAL_URL,
@@ -16,6 +17,7 @@ from bolsa_finder.funding import (
     fetch_capes_print,
     fetch_cnpq_modalities,
     fetch_daad_cofunded_grant,
+    fetch_fapeam_modalities,
     fetch_fapesb_posdoutorado,
     fetch_faperj_doutorado_sanduiche,
     fetch_msca_postdoctoral,
@@ -74,6 +76,19 @@ e/ou tecnológica com sede na Bahia, para desenvolver projeto de pesquisa em
 instituição de outro estado ou país.
 {filler}</p></body></html>
 """.format(filler="t" * 100)
+
+FAPEAM_SNIPPET_HTML = """
+<html><body><p>{filler}
+Doutorado no exterior DEX Cota Individual Formar doutores no exterior em
+centros de excelência. ÚNICO Ter sido aceito(a) ou estar regularmente
+matriculado(a) em Programa de Doutoramento.
+Doutorado Sanduíche no exterior DSEX Cota Individual Apoiar alunos. ÚNICO
+Estar regularmente matriculado(a) em Programa de Doutoramento reconhecido
+pela CAPES em instituição do Amazonas.
+Pós-Doutorado PDEXT Cota Individual Possibilitar a atualização. ÚNICO Ter
+vínculo empregatício com IPES do Estado do Amazonas.
+{filler}</p></body></html>
+""".format(filler="s" * 100)
 
 
 def _client(httpx_mock) -> httpx.Client:
@@ -267,6 +282,32 @@ def test_fetch_fapesb_posdoutorado_end_to_end_with_mocked_http(httpx_mock) -> No
     assert "vínculo com instituição" in opportunity.eligibility_evidence.lower()
 
 
+def test_fetch_fapeam_modalities_end_to_end_with_mocked_http(httpx_mock) -> None:
+    httpx_mock.add_response(url=FAPEAM_BOLSAS_EXTERIOR_URL, html=FAPEAM_SNIPPET_HTML)
+
+    with httpx.Client() as client:
+        opportunities = fetch_fapeam_modalities(client, consulted_at=date(2026, 1, 15))
+
+    assert len(opportunities) == 3
+    by_level = {o.target_levels[0]: o for o in opportunities}
+    # Unlike CNPq, all three FAPEAM modalities have real eligibility text.
+    assert by_level["pleno"].eligibility_brazilian == "likely"
+    assert by_level["sanduiche"].eligibility_brazilian == "likely"
+    assert by_level["posdoc"].eligibility_brazilian == "likely"
+    assert all(o.agency == "FAPEAM" for o in opportunities)
+    assert all(o.url == FAPEAM_BOLSAS_EXTERIOR_URL for o in opportunities)
+
+
+def test_fetch_fapeam_modalities_all_unverified_when_page_unreachable(httpx_mock) -> None:
+    httpx_mock.add_response(url=FAPEAM_BOLSAS_EXTERIOR_URL, status_code=500)
+
+    with httpx.Client() as client:
+        opportunities = fetch_fapeam_modalities(client, consulted_at=date(2026, 1, 15))
+
+    assert len(opportunities) == 3
+    assert all(o.eligibility_brazilian == "unverified" for o in opportunities)
+
+
 def test_fetch_all_automated_opportunities_fetches_every_source(httpx_mock) -> None:
     httpx_mock.add_response(url=CAPES_PDSE_URL, html=CAPES_SNIPPET_HTML)
     httpx_mock.add_response(url=CAPES_PRINT_URL, html=CAPES_PRINT_SNIPPET_HTML)
@@ -275,11 +316,12 @@ def test_fetch_all_automated_opportunities_fetches_every_source(httpx_mock) -> N
     httpx_mock.add_response(url=FAPERJ_DOUTORADO_SANDUICHE_URL, html=FAPERJ_SNIPPET_HTML)
     httpx_mock.add_response(url=FAPESB_POSDOUTORADO_URL, html=FAPESB_SNIPPET_HTML)
     httpx_mock.add_response(url=CNPQ_MODALIDADES_URL, html=CNPQ_MODALIDADES_SNIPPET_HTML)
+    httpx_mock.add_response(url=FAPEAM_BOLSAS_EXTERIOR_URL, html=FAPEAM_SNIPPET_HTML)
 
     with httpx.Client() as client:
         opportunities = fetch_all_automated_opportunities(client, consulted_at=date(2026, 1, 15))
 
-    assert len(opportunities) == 10
+    assert len(opportunities) == 13
     assert {o.agency for o in opportunities} == {
         "CAPES",
         "DAAD",
@@ -287,4 +329,5 @@ def test_fetch_all_automated_opportunities_fetches_every_source(httpx_mock) -> N
         "FAPERJ",
         "FAPESB",
         "CNPq",
+        "FAPEAM",
     }

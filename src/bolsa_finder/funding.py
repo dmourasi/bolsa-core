@@ -30,6 +30,9 @@ from bolsa_finder.eligibility import (
     assess_cnpq_no_explicit_criteria,
     assess_cnpq_swe,
     assess_daad_cofunded_grant,
+    assess_fapeam_dex,
+    assess_fapeam_dsex,
+    assess_fapeam_pdext,
     assess_faperj_doutorado_sanduiche,
     assess_fapesb_posdoutorado,
     assess_msca_postdoctoral,
@@ -102,6 +105,8 @@ CNPQ_MODALIDADES_URL = "https://www.gov.br/cnpq/pt-br/acesso-a-informacao/bolsas
 FAPERJ_DOUTORADO_SANDUICHE_URL = "https://www.faperj.br/?id=86.5.1"
 
 FAPESB_POSDOUTORADO_URL = "https://www.fapesb.ba.gov.br/pos-doutorado/"
+
+FAPEAM_BOLSAS_EXTERIOR_URL = "https://www.fapeam.am.gov.br/bolsas/tabela-de-bolsas-no-exterior/"
 
 
 def _fetch_opportunity(
@@ -222,9 +227,46 @@ def fetch_fapesb_posdoutorado(client: httpx.Client, consulted_at: date | None = 
     )
 
 
-# CNPq's "Modalidades" page covers four levels in one page, each with its own
-# assessor (see eligibility.py) -- fetched once and split into four
-# FundingOpportunity records rather than hitting the same URL four times.
+def _fetch_multi_modality_opportunities(
+    client: httpx.Client,
+    url: str,
+    agency: str,
+    country_or_region: str,
+    modalities: list[tuple[str, list[str], Callable[[str], tuple[EligibilityLevel, str | None]]]],
+    consulted_at: date | None,
+) -> list[FundingOpportunity]:
+    """Shared flow for a page that covers several modalities/levels at once
+    (CNPq, FAPEAM) -- fetched ONCE, then one FundingOpportunity per
+    modality using that modality's own assessor, instead of hitting the
+    same URL once per modality."""
+    text = fetch_page_text(client, url)
+    consulted = consulted_at or date.today()
+    opportunities = []
+    for name, target_levels, assess in modalities:
+        level, evidence = assess(text) if text is not None else ("unverified", None)
+        opportunities.append(
+            FundingOpportunity(
+                name=name,
+                agency=agency,
+                country_or_region=country_or_region,
+                target_levels=target_levels,
+                amount="unknown",
+                deadline="unknown",
+                url=url,
+                consulted_at=consulted,
+                eligibility_brazilian=level,
+                eligibility_evidence=evidence,
+            )
+        )
+    return opportunities
+
+
+# CNPq's "Modalidades" page covers four levels in one page. GDE/MPE/PDE are
+# the only automated coverage for "pleno"/"mestrado" today, but this specific
+# overview page states purpose/benefits/duration, not nationality criteria,
+# for those three -- their eligibility_brazilian is honestly "unknown", not
+# guessed as "likely" just because SWE's section happens to have a usable
+# proxy phrase.
 _CNPQ_MODALITIES = [
     ("Doutorado Pleno no Exterior (GDE)", ["pleno"], assess_cnpq_no_explicit_criteria),
     ("Doutorado-Sanduíche no Exterior (SWE)", ["sanduiche"], assess_cnpq_swe),
@@ -234,34 +276,41 @@ _CNPQ_MODALITIES = [
 
 
 def fetch_cnpq_modalities(client: httpx.Client, consulted_at: date | None = None) -> list[FundingOpportunity]:
-    """CNPq's national funding-abroad modalities: GDE, SWE, MPE, PDE.
+    """CNPq's national funding-abroad modalities: GDE, SWE, MPE, PDE."""
+    return _fetch_multi_modality_opportunities(
+        client,
+        CNPQ_MODALIDADES_URL,
+        agency="CNPq",
+        country_or_region="Brasil (bolsa para período/programa no exterior)",
+        modalities=_CNPQ_MODALITIES,
+        consulted_at=consulted_at,
+    )
 
-    GDE/MPE/PDE are the only automated coverage for "pleno"/"mestrado"
-    today, but this specific overview page states purpose/benefits/
-    duration, not nationality criteria, for those three -- their
-    eligibility_brazilian is honestly "unknown", not guessed as "likely"
-    just because SWE's section happens to have a usable proxy phrase.
+
+# FAPEAM's "Tabela de Bolsas no Exterior" page: unlike CNPq's, ALL THREE
+# modalities mapped here have real institutional-link eligibility text, so
+# none of them fall back to "unknown".
+_FAPEAM_MODALITIES = [
+    ("Doutorado no Exterior (DEX)", ["pleno"], assess_fapeam_dex),
+    ("Doutorado Sanduíche no Exterior (DSEX)", ["sanduiche"], assess_fapeam_dsex),
+    ("Pós-Doutorado no Exterior (PDEXT)", ["posdoc"], assess_fapeam_pdext),
+]
+
+
+def fetch_fapeam_modalities(client: httpx.Client, consulted_at: date | None = None) -> list[FundingOpportunity]:
+    """FAPEAM's national-state funding-abroad modalities: DEX, DSEX, PDEXT.
+
+    Third state-agency (FAP) source, and the first with real eligibility
+    evidence for "pleno" (GDE's CNPq counterpart had none).
     """
-    text = fetch_page_text(client, CNPQ_MODALIDADES_URL)
-    consulted = consulted_at or date.today()
-    opportunities = []
-    for name, target_levels, assess in _CNPQ_MODALITIES:
-        level, evidence = assess(text) if text is not None else ("unverified", None)
-        opportunities.append(
-            FundingOpportunity(
-                name=name,
-                agency="CNPq",
-                country_or_region="Brasil (bolsa para período/programa no exterior)",
-                target_levels=target_levels,
-                amount="unknown",
-                deadline="unknown",
-                url=CNPQ_MODALIDADES_URL,
-                consulted_at=consulted,
-                eligibility_brazilian=level,
-                eligibility_evidence=evidence,
-            )
-        )
-    return opportunities
+    return _fetch_multi_modality_opportunities(
+        client,
+        FAPEAM_BOLSAS_EXTERIOR_URL,
+        agency="FAPEAM",
+        country_or_region="Amazonas, Brasil (bolsa para período/programa no exterior)",
+        modalities=_FAPEAM_MODALITIES,
+        consulted_at=consulted_at,
+    )
 
 
 # Every fetcher that is fully automated end-to-end (see references/fontes-*.md
@@ -276,6 +325,11 @@ ALL_FETCHERS: list[Callable[[httpx.Client, date | None], FundingOpportunity]] = 
     fetch_fapesb_posdoutorado,
 ]
 
+MULTI_MODALITY_FETCHERS: list[Callable[[httpx.Client, date | None], list[FundingOpportunity]]] = [
+    fetch_cnpq_modalities,
+    fetch_fapeam_modalities,
+]
+
 
 def fetch_all_automated_opportunities(
     client: httpx.Client, consulted_at: date | None = None
@@ -284,7 +338,8 @@ def fetch_all_automated_opportunities(
     eligibility_brazilian/evidence -- this just aggregates, it does not
     filter or interpret anything."""
     opportunities = [fetcher(client, consulted_at) for fetcher in ALL_FETCHERS]
-    opportunities.extend(fetch_cnpq_modalities(client, consulted_at))
+    for multi_fetcher in MULTI_MODALITY_FETCHERS:
+        opportunities.extend(multi_fetcher(client, consulted_at))
     return opportunities
 
 
