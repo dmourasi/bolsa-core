@@ -10,6 +10,8 @@ from bolsa_finder.eligibility import (
     assess_fapesb_posdoutorado,
     assess_fapespa_pdo,
     assess_faperj_doutorado_sanduiche,
+    assess_fundacion_carolina_doctorado,
+    assess_msca_doctoral_networks,
     assess_msca_postdoctoral,
     find_evidence,
 )
@@ -233,6 +235,46 @@ def test_assess_fapespa_pdo_is_always_unknown() -> None:
     )
 
     level, evidence = assess_fapespa_pdo(page_text)
+
+    assert level == "unknown"
+    assert evidence is None
+
+
+def test_assess_msca_doctoral_networks_confirmed_when_any_nationality_present() -> None:
+    page_text = (
+        "Researchers funded by Doctoral Networks must not have a doctoral "
+        "degree at the date of their recruitment can be of any nationality "
+        "should be enrolled in a doctoral programme."
+    )
+
+    level, evidence = assess_msca_doctoral_networks(page_text)
+
+    assert level == "confirmed"
+    assert "any nationality" in evidence
+
+
+def test_assess_msca_doctoral_networks_unknown_when_text_does_not_match() -> None:
+    level, evidence = assess_msca_doctoral_networks("completely unrelated page content")
+
+    assert level == "unknown"
+    assert evidence is None
+
+
+def test_assess_fundacion_carolina_confirmed_when_latin_america_clause_present() -> None:
+    page_text = (
+        "Requisitos. Es necesario cumplir los siguientes requisitos: Tener "
+        "ciudadanía de alguno de los países de América Latina integrantes "
+        "de la Comunidad Iberoamericana de Naciones."
+    )
+
+    level, evidence = assess_fundacion_carolina_doctorado(page_text)
+
+    assert level == "confirmed"
+    assert "América Latina" in evidence
+
+
+def test_assess_fundacion_carolina_unknown_when_text_does_not_match() -> None:
+    level, evidence = assess_fundacion_carolina_doctorado("completely unrelated page content")
 
     assert level == "unknown"
     assert evidence is None

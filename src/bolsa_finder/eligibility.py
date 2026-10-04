@@ -235,3 +235,34 @@ def assess_msca_postdoctoral(page_text: str) -> tuple[EligibilityLevel, str | No
     if evidence is None:
         return "unknown", None
     return "confirmed", evidence
+
+
+def assess_msca_doctoral_networks(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """Assess MSCA Doctoral Networks eligibility (full PhD positions, "pleno").
+
+    The official page states plainly that funded researchers can be of
+    any nationality, so an explicit match is "confirmed".
+    """
+    evidence = find_evidence(page_text, ["can be of any nationality"])
+    if evidence is None:
+        return "unknown", None
+    return "confirmed", evidence
+
+
+def assess_fundacion_carolina_doctorado(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """Assess Fundación Carolina's Doctorado programme (Spain, "pleno").
+
+    The official page restricts eligibility to citizens of Latin American
+    countries in the Ibero-American Community of Nations -- Brazil
+    qualifies, so an explicit match is "confirmed". Note: the page URL
+    includes a numeric program id and shows the currently open cycle
+    ("Convocatoria: C.2026"); re-verify this fetcher still resolves if
+    Fundación Carolina ever restructures its program pages per cycle.
+    """
+    evidence = find_evidence(
+        page_text,
+        ["ciudadanía de alguno de los países de América Latina"],
+    )
+    if evidence is None:
+        return "unknown", None
+    return "confirmed", evidence

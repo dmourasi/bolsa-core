@@ -36,6 +36,8 @@ from bolsa_finder.eligibility import (
     assess_faperj_doutorado_sanduiche,
     assess_fapesb_posdoutorado,
     assess_fapespa_pdo,
+    assess_fundacion_carolina_doctorado,
+    assess_msca_doctoral_networks,
     assess_msca_postdoctoral,
 )
 
@@ -100,6 +102,10 @@ CAPES_PRINT_URL = (
 )
 
 MSCA_POSTDOCTORAL_URL = "https://marie-sklodowska-curie-actions.ec.europa.eu/actions/postdoctoral-fellowships"
+
+MSCA_DOCTORAL_NETWORKS_URL = "https://marie-sklodowska-curie-actions.ec.europa.eu/actions/doctoral-networks"
+
+FUNDACION_CAROLINA_DOCTORADO_URL = "https://gestion.fundacioncarolina.es/programas/6519"
 
 CNPQ_MODALIDADES_URL = "https://www.gov.br/cnpq/pt-br/acesso-a-informacao/bolsas-e-auxilios/copy_of_modalidades/bolsas-modalidades"
 
@@ -197,6 +203,34 @@ def fetch_msca_postdoctoral(client: httpx.Client, consulted_at: date | None = No
         agency="European Commission / Horizon Europe (MSCA)",
         country_or_region="European Union / Horizon Europe Associated Countries",
         target_levels=["posdoc"],
+        consulted_at=consulted_at,
+    )
+
+
+def fetch_msca_doctoral_networks(client: httpx.Client, consulted_at: date | None = None) -> FundingOpportunity:
+    """MSCA Doctoral Networks (full PhD positions, Horizon Europe, EU)."""
+    return _fetch_opportunity(
+        client,
+        MSCA_DOCTORAL_NETWORKS_URL,
+        assess_msca_doctoral_networks,
+        name="MSCA Doctoral Networks",
+        agency="European Research Executive Agency (REA) / Horizon Europe (MSCA)",
+        country_or_region="European Union / Horizon Europe Associated Countries",
+        target_levels=["pleno"],
+        consulted_at=consulted_at,
+    )
+
+
+def fetch_fundacion_carolina_doctorado(client: httpx.Client, consulted_at: date | None = None) -> FundingOpportunity:
+    """Fundación Carolina Doctorado (full PhD in Spain for Latin American citizens)."""
+    return _fetch_opportunity(
+        client,
+        FUNDACION_CAROLINA_DOCTORADO_URL,
+        assess_fundacion_carolina_doctorado,
+        name="Becas de Doctorado (Fundación Carolina)",
+        agency="Fundación Carolina",
+        country_or_region="Espanha (programa completo de doutorado)",
+        target_levels=["pleno"],
         consulted_at=consulted_at,
     )
 
@@ -336,12 +370,15 @@ def fetch_fapeam_modalities(client: httpx.Client, consulted_at: date | None = No
 
 # Every fetcher that is fully automated end-to-end (see references/fontes-*.md
 # for sources that are catalogued but NOT here because they require manual
-# investigation -- CNPq chamadas, FAPESP, MSCA Doctoral Networks, etc).
+# investigation -- CNPq chamadas, FAPESP, Chevening (bot-blocked), SINGA
+# (URL moved/404), etc).
 ALL_FETCHERS: list[Callable[[httpx.Client, date | None], FundingOpportunity]] = [
     fetch_capes_pdse,
     fetch_capes_print,
     fetch_daad_cofunded_grant,
     fetch_msca_postdoctoral,
+    fetch_msca_doctoral_networks,
+    fetch_fundacion_carolina_doctorado,
     fetch_faperj_doutorado_sanduiche,
     fetch_fapesb_posdoutorado,
     fetch_fapespa_pdo,

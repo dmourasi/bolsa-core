@@ -11,6 +11,8 @@ from bolsa_finder.funding import (
     FAPERJ_DOUTORADO_SANDUICHE_URL,
     FAPESB_POSDOUTORADO_URL,
     FAPESPA_BOLSAS_URL,
+    FUNDACION_CAROLINA_DOCTORADO_URL,
+    MSCA_DOCTORAL_NETWORKS_URL,
     MSCA_POSTDOCTORAL_URL,
     FundingOpportunity,
     fetch_all_automated_opportunities,
@@ -22,6 +24,8 @@ from bolsa_finder.funding import (
     fetch_fapesb_posdoutorado,
     fetch_fapespa_pdo,
     fetch_faperj_doutorado_sanduiche,
+    fetch_fundacion_carolina_doctorado,
+    fetch_msca_doctoral_networks,
     fetch_msca_postdoctoral,
     fetch_page_text,
     opportunities_for_target_level,
@@ -91,6 +95,22 @@ Pós-Doutorado PDEXT Cota Individual Possibilitar a atualização. ÚNICO Ter
 vínculo empregatício com IPES do Estado do Amazonas.
 {filler}</p></body></html>
 """.format(filler="s" * 100)
+
+MSCA_DN_SNIPPET_HTML = """
+<html><body><p>{filler}
+Researchers funded by Doctoral Networks must not have a doctoral degree
+at the date of their recruitment can be of any nationality should be
+enrolled in a doctoral programme during the project.
+{filler}</p></body></html>
+""".format(filler="q" * 100)
+
+FUNDACION_CAROLINA_SNIPPET_HTML = """
+<html><body><p>{filler}
+Requisitos Es necesario cumplir los siguientes requisitos: Tener
+ciudadanía de alguno de los países de América Latina integrantes de la
+Comunidad Iberoamericana de Naciones.
+{filler}</p></body></html>
+""".format(filler="p" * 100)
 
 
 def _client(httpx_mock) -> httpx.Client:
@@ -332,11 +352,36 @@ def test_fetch_fapespa_pdo_always_unknown_even_with_real_page_text(httpx_mock) -
     assert opportunity.eligibility_evidence is None
 
 
+def test_fetch_msca_doctoral_networks_end_to_end_with_mocked_http(httpx_mock) -> None:
+    httpx_mock.add_response(url=MSCA_DOCTORAL_NETWORKS_URL, html=MSCA_DN_SNIPPET_HTML)
+
+    with httpx.Client() as client:
+        opportunity = fetch_msca_doctoral_networks(client, consulted_at=date(2026, 1, 15))
+
+    assert opportunity.target_levels == ["pleno"]
+    assert opportunity.eligibility_brazilian == "confirmed"
+    assert "any nationality" in opportunity.eligibility_evidence
+
+
+def test_fetch_fundacion_carolina_doctorado_end_to_end_with_mocked_http(httpx_mock) -> None:
+    httpx_mock.add_response(url=FUNDACION_CAROLINA_DOCTORADO_URL, html=FUNDACION_CAROLINA_SNIPPET_HTML)
+
+    with httpx.Client() as client:
+        opportunity = fetch_fundacion_carolina_doctorado(client, consulted_at=date(2026, 1, 15))
+
+    assert opportunity.agency == "Fundación Carolina"
+    assert opportunity.target_levels == ["pleno"]
+    assert opportunity.eligibility_brazilian == "confirmed"
+    assert "América Latina" in opportunity.eligibility_evidence
+
+
 def test_fetch_all_automated_opportunities_fetches_every_source(httpx_mock) -> None:
     httpx_mock.add_response(url=CAPES_PDSE_URL, html=CAPES_SNIPPET_HTML)
     httpx_mock.add_response(url=CAPES_PRINT_URL, html=CAPES_PRINT_SNIPPET_HTML)
     httpx_mock.add_response(url=DAAD_COFUNDED_GRANT_URL, html=DAAD_SNIPPET_HTML)
     httpx_mock.add_response(url=MSCA_POSTDOCTORAL_URL, html=MSCA_SNIPPET_HTML)
+    httpx_mock.add_response(url=MSCA_DOCTORAL_NETWORKS_URL, html=MSCA_DN_SNIPPET_HTML)
+    httpx_mock.add_response(url=FUNDACION_CAROLINA_DOCTORADO_URL, html=FUNDACION_CAROLINA_SNIPPET_HTML)
     httpx_mock.add_response(url=FAPERJ_DOUTORADO_SANDUICHE_URL, html=FAPERJ_SNIPPET_HTML)
     httpx_mock.add_response(url=FAPESB_POSDOUTORADO_URL, html=FAPESB_SNIPPET_HTML)
     httpx_mock.add_response(url=FAPESPA_BOLSAS_URL, html=FAPESB_SNIPPET_HTML)
@@ -346,11 +391,13 @@ def test_fetch_all_automated_opportunities_fetches_every_source(httpx_mock) -> N
     with httpx.Client() as client:
         opportunities = fetch_all_automated_opportunities(client, consulted_at=date(2026, 1, 15))
 
-    assert len(opportunities) == 14
+    assert len(opportunities) == 16
     assert {o.agency for o in opportunities} == {
         "CAPES",
         "DAAD",
         "European Commission / Horizon Europe (MSCA)",
+        "European Research Executive Agency (REA) / Horizon Europe (MSCA)",
+        "Fundación Carolina",
         "FAPERJ",
         "FAPESB",
         "FAPESPA",
