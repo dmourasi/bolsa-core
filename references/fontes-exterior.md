@@ -35,9 +35,17 @@ consulta e pode estar desatualizado.
 
 ## Estados Unidos
 
-- **Fulbright** -- programas de doutorado/pós-doutorado para brasileiros,
-  geridos pela Comissão Fulbright Brasil; elegibilidade e prazos
-  publicados anualmente no site da comissão.
+- **Fulbright DDRA** (Doctoral Dissertation Research Award) -- doutorado-
+  sanduíche nos EUA. Elegibilidade real e explícita: cidadania brasileira
+  sem dupla cidadania com os EUA, matrícula regular em doutorado em
+  universidade brasileira, residência no Brasil, proficiência em inglês
+  (TOEFL iBT 81 / IELTS 6,5 / Duolingo 110). **Não automatizado**:
+  investigado nesta sessão (`fulbright.org.br`), mas a elegibilidade só
+  aparece em PDFs específicos de cada ciclo ("Call-BR-DDR-AAAA-AAAA.pdf"),
+  não numa página HTML persistente -- mesmo problema estrutural do CNPq
+  (URL muda a cada ciclo). A página `fulbright.org.br/bolsas-para-
+  brasileiros/` é só um índice, sem o texto de elegibilidade. Buscar o
+  PDF do ciclo vigente e extrair a elegibilidade manualmente.
 
 ## Reino Unido
 

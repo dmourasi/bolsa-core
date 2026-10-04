@@ -8,6 +8,7 @@ from bolsa_finder.funding import (
     CNPQ_MODALIDADES_URL,
     DAAD_COFUNDED_GRANT_URL,
     FAPERJ_DOUTORADO_SANDUICHE_URL,
+    FAPESB_POSDOUTORADO_URL,
     MSCA_POSTDOCTORAL_URL,
     FundingOpportunity,
     fetch_all_automated_opportunities,
@@ -15,6 +16,7 @@ from bolsa_finder.funding import (
     fetch_capes_print,
     fetch_cnpq_modalities,
     fetch_daad_cofunded_grant,
+    fetch_fapesb_posdoutorado,
     fetch_faperj_doutorado_sanduiche,
     fetch_msca_postdoctoral,
     fetch_page_text,
@@ -63,6 +65,15 @@ Do bolsista Ter nacionalidade brasileira ou visto permanente no Brasil
 atualizado, no caso de pesquisador estrangeiro.
 {filler}</p></body></html>
 """.format(filler="u" * 100)
+
+FAPESB_SNIPPET_HTML = """
+<html><body><p>{filler}
+PÓS-DOUTORADO 2 – PD2 Destinada a quem alcançou o título de doutor, e tem
+vínculo com instituição de enino superior e/ou centro de pesquisa científica
+e/ou tecnológica com sede na Bahia, para desenvolver projeto de pesquisa em
+instituição de outro estado ou país.
+{filler}</p></body></html>
+""".format(filler="t" * 100)
 
 
 def _client(httpx_mock) -> httpx.Client:
@@ -244,22 +255,36 @@ def test_fetch_faperj_doutorado_sanduiche_end_to_end_with_mocked_http(httpx_mock
     assert "nacionalidade brasileira" in opportunity.eligibility_evidence.lower()
 
 
+def test_fetch_fapesb_posdoutorado_end_to_end_with_mocked_http(httpx_mock) -> None:
+    httpx_mock.add_response(url=FAPESB_POSDOUTORADO_URL, html=FAPESB_SNIPPET_HTML)
+
+    with httpx.Client() as client:
+        opportunity = fetch_fapesb_posdoutorado(client, consulted_at=date(2026, 1, 15))
+
+    assert opportunity.agency == "FAPESB"
+    assert opportunity.target_levels == ["posdoc"]
+    assert opportunity.eligibility_brazilian == "likely"
+    assert "vínculo com instituição" in opportunity.eligibility_evidence.lower()
+
+
 def test_fetch_all_automated_opportunities_fetches_every_source(httpx_mock) -> None:
     httpx_mock.add_response(url=CAPES_PDSE_URL, html=CAPES_SNIPPET_HTML)
     httpx_mock.add_response(url=CAPES_PRINT_URL, html=CAPES_PRINT_SNIPPET_HTML)
     httpx_mock.add_response(url=DAAD_COFUNDED_GRANT_URL, html=DAAD_SNIPPET_HTML)
     httpx_mock.add_response(url=MSCA_POSTDOCTORAL_URL, html=MSCA_SNIPPET_HTML)
     httpx_mock.add_response(url=FAPERJ_DOUTORADO_SANDUICHE_URL, html=FAPERJ_SNIPPET_HTML)
+    httpx_mock.add_response(url=FAPESB_POSDOUTORADO_URL, html=FAPESB_SNIPPET_HTML)
     httpx_mock.add_response(url=CNPQ_MODALIDADES_URL, html=CNPQ_MODALIDADES_SNIPPET_HTML)
 
     with httpx.Client() as client:
         opportunities = fetch_all_automated_opportunities(client, consulted_at=date(2026, 1, 15))
 
-    assert len(opportunities) == 9
+    assert len(opportunities) == 10
     assert {o.agency for o in opportunities} == {
         "CAPES",
         "DAAD",
         "European Commission / Horizon Europe (MSCA)",
         "FAPERJ",
+        "FAPESB",
         "CNPq",
     }

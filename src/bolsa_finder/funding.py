@@ -31,6 +31,7 @@ from bolsa_finder.eligibility import (
     assess_cnpq_swe,
     assess_daad_cofunded_grant,
     assess_faperj_doutorado_sanduiche,
+    assess_fapesb_posdoutorado,
     assess_msca_postdoctoral,
 )
 
@@ -99,6 +100,8 @@ MSCA_POSTDOCTORAL_URL = "https://marie-sklodowska-curie-actions.ec.europa.eu/act
 CNPQ_MODALIDADES_URL = "https://www.gov.br/cnpq/pt-br/acesso-a-informacao/bolsas-e-auxilios/copy_of_modalidades/bolsas-modalidades"
 
 FAPERJ_DOUTORADO_SANDUICHE_URL = "https://www.faperj.br/?id=86.5.1"
+
+FAPESB_POSDOUTORADO_URL = "https://www.fapesb.ba.gov.br/pos-doutorado/"
 
 
 def _fetch_opportunity(
@@ -205,6 +208,20 @@ def fetch_faperj_doutorado_sanduiche(client: httpx.Client, consulted_at: date | 
     )
 
 
+def fetch_fapesb_posdoutorado(client: httpx.Client, consulted_at: date | None = None) -> FundingOpportunity:
+    """FAPESB Pós-Doutorado 2 (PD2) -- research abroad track, second state-agency (FAP) source."""
+    return _fetch_opportunity(
+        client,
+        FAPESB_POSDOUTORADO_URL,
+        assess_fapesb_posdoutorado,
+        name="Pós-Doutorado 2 (PD2)",
+        agency="FAPESB",
+        country_or_region="Bahia, Brasil (projeto desenvolvido em outro estado ou país)",
+        target_levels=["posdoc"],
+        consulted_at=consulted_at,
+    )
+
+
 # CNPq's "Modalidades" page covers four levels in one page, each with its own
 # assessor (see eligibility.py) -- fetched once and split into four
 # FundingOpportunity records rather than hitting the same URL four times.
@@ -256,6 +273,7 @@ ALL_FETCHERS: list[Callable[[httpx.Client, date | None], FundingOpportunity]] = 
     fetch_daad_cofunded_grant,
     fetch_msca_postdoctoral,
     fetch_faperj_doutorado_sanduiche,
+    fetch_fapesb_posdoutorado,
 ]
 
 

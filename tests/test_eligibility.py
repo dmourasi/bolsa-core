@@ -4,6 +4,7 @@ from bolsa_finder.eligibility import (
     assess_cnpq_no_explicit_criteria,
     assess_cnpq_swe,
     assess_daad_cofunded_grant,
+    assess_fapesb_posdoutorado,
     assess_faperj_doutorado_sanduiche,
     assess_msca_postdoctoral,
     find_evidence,
@@ -143,6 +144,26 @@ def test_assess_faperj_confirmed_when_nationality_clause_present() -> None:
 
 def test_assess_faperj_unknown_when_text_does_not_match() -> None:
     level, evidence = assess_faperj_doutorado_sanduiche("completely unrelated page content")
+
+    assert level == "unknown"
+    assert evidence is None
+
+
+def test_assess_fapesb_likely_when_institutional_link_text_present() -> None:
+    page_text = (
+        "Destinada a quem alcançou o título de doutor, e tem vínculo com "
+        "instituição de enino superior e/ou centro de pesquisa científica "
+        "e/ou tecnológica com sede na Bahia."
+    )
+
+    level, evidence = assess_fapesb_posdoutorado(page_text)
+
+    assert level == "likely"
+    assert "vínculo com instituição" in evidence.lower()
+
+
+def test_assess_fapesb_unknown_when_text_does_not_match() -> None:
+    level, evidence = assess_fapesb_posdoutorado("completely unrelated page content")
 
     assert level == "unknown"
     assert evidence is None

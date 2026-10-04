@@ -142,6 +142,25 @@ def assess_faperj_doutorado_sanduiche(page_text: str) -> tuple[EligibilityLevel,
     return "confirmed", evidence
 
 
+def assess_fapesb_posdoutorado(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """Assess FAPESB's Pós-Doutorado 2 (PD2) -- research abroad track.
+
+    PD2 gates on an institutional link to a Bahia-based institution, not
+    nationality directly (same indirect pattern as PDSE/SWE), so "likely"
+    not "confirmed".
+    """
+    evidence = find_evidence(
+        page_text,
+        [
+            "vínculo com instituição de enino superior e/ou centro de pesquisa científica",
+            "vínculo com instituição de ensino superior e/ou centro de pesquisa científica",
+        ],
+    )
+    if evidence is None:
+        return "unknown", None
+    return "likely", evidence
+
+
 def assess_msca_postdoctoral(page_text: str) -> tuple[EligibilityLevel, str | None]:
     """Assess MSCA European Postdoctoral Fellowships eligibility.
 

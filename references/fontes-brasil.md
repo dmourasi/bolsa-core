@@ -1,13 +1,13 @@
 # Fontes de financiamento — Brasil
 
 Catálogo de agências/programas a investigar. **CAPES PDSE**, **CAPES
-PrInt**, **CNPq** (4 modalidades) e **FAPERJ** têm fetcher automatizado
-(`uv run bolsa-finder funding capes-pdse` / `capes-print` / `cnpq` /
-`faperj`, ou `funding applicable <target_level>` para já filtrar pelo
-nível do candidato). Para as demais, siga `references/elegibilidade.md`
-e monte o `FundingOpportunity` manualmente a partir da página oficial
-atual -- não reutilize valores ou prazos deste arquivo, que não leva
-URL/data de consulta e pode estar desatualizado.
+PrInt**, **CNPq** (4 modalidades), **FAPERJ** e **FAPESB** têm fetcher
+automatizado (`uv run bolsa-finder funding capes-pdse` / `capes-print` /
+`cnpq` / `faperj` / `fapesb`, ou `funding applicable <target_level>` para
+já filtrar pelo nível do candidato). Para as demais, siga
+`references/elegibilidade.md` e monte o `FundingOpportunity` manualmente
+a partir da página oficial atual -- não reutilize valores ou prazos deste
+arquivo, que não leva URL/data de consulta e pode estar desatualizado.
 
 ## CAPES (Coordenação de Aperfeiçoamento de Pessoal de Nível Superior)
 
@@ -62,14 +62,19 @@ do estado).
   matrícula em doutorado avaliado pela CAPES com conceito ≥3 em
   instituição sediada no RJ -- essa segunda restrição geográfica deve ser
   checada contra o perfil do candidato antes de recomendar).
+- **FAPESB** (Bahia) -- **automatizado** (`funding fapesb`). "Pós-Doutorado
+  2 (PD2)" tem página de programa permanente e estática. Elegibilidade é
+  por vínculo institucional com instituição sediada na Bahia (`likely`,
+  mesmo padrão indireto do PDSE/SWE), não nacionalidade explícita.
 - **FAPESP** (São Paulo) -- **não automatizado**: a página do programa
   BEPE é renderizada via JavaScript (corpo vazio para
   `httpx`+`selectolax`); ver seção CNPq/FAPESP acima.
-- **FAPEMIG** (Minas Gerais), **FACEPE** (Pernambuco), demais FAPs --
-  **não automatizadas ainda**. Têm programas de bolsa-sanduíche/pós-doc
-  (ex.: FAPEMIG PCRH), mas publicados como "chamadas" com URL/prazo que
-  mudam a cada edital, igual ao padrão do CNPq -- buscar a chamada
-  vigente no site da FAP e montar o `FundingOpportunity` manualmente.
+- **FAPEMIG** (Minas Gerais), **FACEPE** (Pernambuco), **FAPERGS** (Rio
+  Grande do Sul), demais FAPs -- **não automatizadas ainda**. Têm
+  programas de bolsa-sanduíche/pós-doc (ex.: FAPEMIG PCRH), mas
+  publicados como "chamadas" com URL/prazo que mudam a cada edital, igual
+  ao padrão do CNPq -- buscar a chamada vigente no site da FAP e montar o
+  `FundingOpportunity` manualmente.
 
 ## Editais de mobilidade específicos
 
