@@ -1,7 +1,15 @@
+import json
 from datetime import date
+from pathlib import Path
 
 from bolsa_finder.funding import FundingOpportunity
-from bolsa_finder.report import DISCLAIMER, build_report, render_markdown
+from bolsa_finder.report import (
+    DISCLAIMER,
+    build_report,
+    load_fit_scores,
+    load_funding_opportunities,
+    render_markdown,
+)
 from bolsa_finder.score import FitScore
 
 
@@ -71,3 +79,52 @@ def test_markdown_handles_empty_results_without_fabricating_data() -> None:
 
     assert "Nenhuma fonte de financiamento verificada" in markdown
     assert "Nenhum pesquisador avaliado" in markdown
+
+
+def test_load_funding_opportunities_parses_single_object_file(tmp_path: Path) -> None:
+    path = tmp_path / "funding_daad.json"
+    path.write_text(_funding(name="DAAD Grant").model_dump_json(indent=2), encoding="utf-8")
+
+    opportunities = load_funding_opportunities([path])
+
+    assert len(opportunities) == 1
+    assert opportunities[0].name == "DAAD Grant"
+
+
+def test_load_funding_opportunities_parses_concatenated_objects_file(tmp_path: Path) -> None:
+    # Mirrors how `funding cnpq`/`funding fapeam` actually write their output:
+    # one JSON object per modality, printed back-to-back, not a JSON array.
+    path = tmp_path / "funding_cnpq.json"
+    opportunities_in = [_funding(name="GDE"), _funding(name="SWE"), _funding(name="PDE")]
+    path.write_text(
+        "\n".join(o.model_dump_json(indent=2) for o in opportunities_in), encoding="utf-8"
+    )
+
+    opportunities = load_funding_opportunities([path])
+
+    assert [o.name for o in opportunities] == ["GDE", "SWE", "PDE"]
+
+
+def test_load_funding_opportunities_merges_multiple_files(tmp_path: Path) -> None:
+    path_a = tmp_path / "funding_daad.json"
+    path_a.write_text(_funding(name="DAAD").model_dump_json(), encoding="utf-8")
+    path_b = tmp_path / "funding_capes.json"
+    path_b.write_text(_funding(name="CAPES").model_dump_json(), encoding="utf-8")
+
+    opportunities = load_funding_opportunities([path_a, path_b])
+
+    assert {o.name for o in opportunities} == {"DAAD", "CAPES"}
+
+
+def test_load_fit_scores_returns_empty_list_when_no_path_given() -> None:
+    assert load_fit_scores(None) == []
+
+
+def test_load_fit_scores_parses_json_array_file(tmp_path: Path) -> None:
+    path = tmp_path / "fit_scores.json"
+    path.write_text(json.dumps([_fit().model_dump()], default=str), encoding="utf-8")
+
+    scores = load_fit_scores(path)
+
+    assert len(scores) == 1
+    assert scores[0].researcher_id == "A1"

@@ -9,7 +9,9 @@ itself, it only renders what funding.py/score.py already produced.
 
 from __future__ import annotations
 
+import json
 from datetime import date
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -28,6 +30,47 @@ class Report(BaseModel):
     funding_opportunities: list[FundingOpportunity]
     fit_scores: list[FitScore]
     disclaimer: str = DISCLAIMER
+
+
+def _parse_concatenated_json_objects(text: str) -> list[dict]:
+    """Parse a file containing one or more JSON objects back-to-back.
+
+    `bolsa-finder funding cnpq`/`fapeam` print one JSON object per
+    modality, not a JSON array, so a redirected output file (e.g.
+    `funding_cnpq.json`) is several concatenated objects -- a plain
+    `json.loads` would fail on anything but a single-opportunity file.
+    """
+    decoder = json.JSONDecoder()
+    objects: list[dict] = []
+    pos = 0
+    length = len(text)
+    while pos < length:
+        while pos < length and text[pos].isspace():
+            pos += 1
+        if pos >= length:
+            break
+        obj, pos = decoder.raw_decode(text, pos)
+        objects.append(obj)
+    return objects
+
+
+def load_funding_opportunities(paths: list[Path]) -> list[FundingOpportunity]:
+    """Load FundingOpportunity records from one or more `funding_*.json`
+    files, each possibly holding several concatenated JSON objects."""
+    opportunities: list[FundingOpportunity] = []
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        for obj in _parse_concatenated_json_objects(text):
+            opportunities.append(FundingOpportunity.model_validate(obj))
+    return opportunities
+
+
+def load_fit_scores(path: Path | None) -> list[FitScore]:
+    """Load FitScore records from a JSON array file, or [] if no path given."""
+    if path is None:
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return [FitScore.model_validate(item) for item in data]
 
 
 def build_report(
