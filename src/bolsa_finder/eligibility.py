@@ -206,6 +206,17 @@ def assess_fapeam_pdext(page_text: str) -> tuple[EligibilityLevel, str | None]:
     return "likely", evidence
 
 
+def assess_fapespa_pdo(page_text: str) -> tuple[EligibilityLevel, str | None]:
+    """Assess FAPESPA PDO (Pós-Doutorado) -- abroad-eligible stage.
+
+    The permanent "Bolsas" category page only states this modality's
+    purpose ("Finalidade"), never nationality or institutional-link
+    criteria -- unlike FAPERJ/FAPESB/FAPEAM, this page gives nothing to
+    cite, so always "unknown" (never guessed from the purpose text).
+    """
+    return "unknown", None
+
+
 def assess_msca_postdoctoral(page_text: str) -> tuple[EligibilityLevel, str | None]:
     """Assess MSCA European Postdoctoral Fellowships eligibility.
 

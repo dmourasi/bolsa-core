@@ -1,14 +1,15 @@
 # Fontes de financiamento — Brasil
 
 Catálogo de agências/programas a investigar. **CAPES PDSE**, **CAPES
-PrInt**, **CNPq** (4 modalidades), **FAPERJ**, **FAPESB** e **FAPEAM**
-(3 modalidades) têm fetcher automatizado (`uv run bolsa-finder funding
-capes-pdse` / `capes-print` / `cnpq` / `faperj` / `fapesb` / `fapeam`, ou
-`funding applicable <target_level>` para já filtrar pelo nível do
-candidato). Para as demais, siga `references/elegibilidade.md` e monte o
-`FundingOpportunity` manualmente a partir da página oficial atual -- não
-reutilize valores ou prazos deste arquivo, que não leva URL/data de
-consulta e pode estar desatualizado.
+PrInt**, **CNPq** (4 modalidades), **FAPERJ**, **FAPESB**, **FAPEAM**
+(3 modalidades) e **FAPESPA** têm fetcher automatizado (`uv run
+bolsa-finder funding capes-pdse` / `capes-print` / `cnpq` / `faperj` /
+`fapesb` / `fapeam` / `fapespa`, ou `funding applicable <target_level>`
+para já filtrar pelo nível do candidato). Para as demais, siga
+`references/elegibilidade.md` e monte o `FundingOpportunity` manualmente
+a partir da página oficial atual -- não reutilize valores ou prazos
+deste arquivo, que não leva URL/data de consulta e pode estar
+desatualizado.
 
 ## CAPES (Coordenação de Aperfeiçoamento de Pessoal de Nível Superior)
 
@@ -74,20 +75,42 @@ do estado).
   elegibilidade real (vínculo/matrícula em instituição do Amazonas,
   `likely`), não só a modalidade sanduíche. Hoje é a única fonte
   automatizada com elegibilidade real (não `unknown`) para `pleno`.
+- **FAPESPA** (Pará) -- **automatizado** (`funding fapespa`). A página
+  permanente "Bolsas" lista PDO (Pós-Doutorado, elegível a estágio no
+  país OU no exterior), mas só com texto de "Finalidade" (propósito),
+  sem nenhum critério de nacionalidade/vínculo -- `eligibility_brazilian`
+  fica sempre `unknown`, honestamente, mesmo tendo uma página estável
+  (mesmo princípio do GDE/MPE/PDE do CNPq).
 - **FAPESP** (São Paulo) -- **não automatizado**: a página do programa
   BEPE é renderizada via JavaScript (corpo vazio para
   `httpx`+`selectolax`); ver seção CNPq/FAPESP acima.
 - **FAPEMIG** (MG), **FACEPE** (PE), **FAPERGS** (RS), **Fundação
   Araucária** (PR), **FAPESC** (SC), **FAPEG** (GO), **FUNCAP** (CE),
   **FAPES** (ES), **FAPDF** (DF), **FAPESQ** (PB), **FAPERN** (RN),
-  **FAPEMAT** (MT), demais FAPs -- **não automatizadas**. Todas
-  verificadas nesta sessão: têm programas de bolsa-sanduíche/pós-doc, mas
-  publicados exclusivamente como "chamadas" com URL/prazo que mudam a
-  cada edital (mesmo padrão do CNPq específico) -- nenhuma tem página de
-  programa permanente como FAPERJ/FAPESB/FAPEAM. Buscar a chamada vigente
-  no site da FAP e montar o `FundingOpportunity` manualmente. FAPs ainda
-  não verificadas: FAPEAL, FAPEMA, FAPEPI, FAPERO, FAPAC, FAPERR, FAPEAP,
-  FAPT/FAPTO, FAPESPA, FAPITEC/FAPESE, FUNDECT (MS).
+  **FAPEMAT** (MT), **FAPEAL** (AL), **FAPEMA** (MA), **FAPEPI** (PI),
+  **FAPITEC/SE** (SE), **FUNDECT** (MS) -- **não automatizadas**. Todas
+  verificadas: têm programas de bolsa-sanduíche/pós-doc, mas publicados
+  exclusivamente como "chamadas" com URL/prazo que mudam a cada edital
+  (mesmo padrão do CNPq específico) -- nenhuma tem página de programa
+  permanente com critério real como FAPERJ/FAPESB/FAPEAM. FAPEMA tem uma
+  página permanente, mas só com tabela de valores, sem texto de
+  elegibilidade. FAPEPI estava com erro 500 no servidor no momento da
+  checagem. Buscar a chamada vigente no site da FAP e montar o
+  `FundingOpportunity` manualmente.
+- **FAPAC** (Acre), **FAPEAP** (Amapá) -- **nenhum programa de mobilidade
+  internacional encontrado**: têm site ativo, mas sem nenhuma modalidade
+  de bolsa no/para o exterior (só fomento doméstico).
+- **FAPERR** (Roraima), **FAPT/FAPTO** (Tocantins) -- **não
+  automatizadas**: qualquer bolsa no exterior aparece só em
+  editais/portarias datados; sem página de programa permanente.
+- **FAPERO** (Rondônia) -- site inacessível (redirecionamentos sem
+  resolução) no momento da checagem; nenhuma página de programa
+  encontrada via busca.
+
+Com isso, as 27 unidades federativas (26 estados + DF) foram verificadas.
+Resultado final: 4 fontes automatizadas (FAPERJ, FAPESB, FAPEAM,
+FAPESPA); as demais seguem o padrão de "chamada por edital" (sem página
+estável) ou não têm programa de mobilidade internacional.
 
 ## Editais de mobilidade específicos
 

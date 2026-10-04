@@ -8,6 +8,7 @@ from bolsa_finder.eligibility import (
     assess_fapeam_dsex,
     assess_fapeam_pdext,
     assess_fapesb_posdoutorado,
+    assess_fapespa_pdo,
     assess_faperj_doutorado_sanduiche,
     assess_msca_postdoctoral,
     find_evidence,
@@ -218,6 +219,20 @@ def test_assess_fapeam_pdext_likely_when_employment_link_text_present() -> None:
 
 def test_assess_fapeam_pdext_unknown_when_text_does_not_match() -> None:
     level, evidence = assess_fapeam_pdext("completely unrelated page content")
+
+    assert level == "unknown"
+    assert evidence is None
+
+
+def test_assess_fapespa_pdo_is_always_unknown() -> None:
+    # Even text that sounds eligibility-adjacent must not be matched --
+    # the real FAPESPA page only has "Finalidade" (purpose), never criteria.
+    page_text = (
+        "Pós-Doutorado (PDO) Finalidade: Possibilitar, ao portador do título "
+        "de doutor, estágio no país ou no exterior."
+    )
+
+    level, evidence = assess_fapespa_pdo(page_text)
 
     assert level == "unknown"
     assert evidence is None

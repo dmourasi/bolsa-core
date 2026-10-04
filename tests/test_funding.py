@@ -10,6 +10,7 @@ from bolsa_finder.funding import (
     FAPEAM_BOLSAS_EXTERIOR_URL,
     FAPERJ_DOUTORADO_SANDUICHE_URL,
     FAPESB_POSDOUTORADO_URL,
+    FAPESPA_BOLSAS_URL,
     MSCA_POSTDOCTORAL_URL,
     FundingOpportunity,
     fetch_all_automated_opportunities,
@@ -19,6 +20,7 @@ from bolsa_finder.funding import (
     fetch_daad_cofunded_grant,
     fetch_fapeam_modalities,
     fetch_fapesb_posdoutorado,
+    fetch_fapespa_pdo,
     fetch_faperj_doutorado_sanduiche,
     fetch_msca_postdoctoral,
     fetch_page_text,
@@ -308,6 +310,28 @@ def test_fetch_fapeam_modalities_all_unverified_when_page_unreachable(httpx_mock
     assert all(o.eligibility_brazilian == "unverified" for o in opportunities)
 
 
+def test_fetch_fapespa_pdo_always_unknown_even_with_real_page_text(httpx_mock) -> None:
+    # The permanent FAPESPA "Bolsas" page states only the program's purpose
+    # ("Finalidade"), never nationality/institutional-link criteria -- this
+    # must stay "unknown" regardless of what the page says.
+    fapespa_html = """
+    <html><body><p>{filler}
+    Pós-Doutorado (PDO) Finalidade: Possibilitar, ao portador do título de
+    doutor, estágio para desenvolvimento de projetos de pesquisa junto a
+    grupos e instituições de reconhecida excelência no país ou no exterior.
+    {filler}</p></body></html>
+    """.format(filler="r" * 100)
+    httpx_mock.add_response(url=FAPESPA_BOLSAS_URL, html=fapespa_html)
+
+    with httpx.Client() as client:
+        opportunity = fetch_fapespa_pdo(client, consulted_at=date(2026, 1, 15))
+
+    assert opportunity.agency == "FAPESPA"
+    assert opportunity.target_levels == ["posdoc"]
+    assert opportunity.eligibility_brazilian == "unknown"
+    assert opportunity.eligibility_evidence is None
+
+
 def test_fetch_all_automated_opportunities_fetches_every_source(httpx_mock) -> None:
     httpx_mock.add_response(url=CAPES_PDSE_URL, html=CAPES_SNIPPET_HTML)
     httpx_mock.add_response(url=CAPES_PRINT_URL, html=CAPES_PRINT_SNIPPET_HTML)
@@ -315,19 +339,21 @@ def test_fetch_all_automated_opportunities_fetches_every_source(httpx_mock) -> N
     httpx_mock.add_response(url=MSCA_POSTDOCTORAL_URL, html=MSCA_SNIPPET_HTML)
     httpx_mock.add_response(url=FAPERJ_DOUTORADO_SANDUICHE_URL, html=FAPERJ_SNIPPET_HTML)
     httpx_mock.add_response(url=FAPESB_POSDOUTORADO_URL, html=FAPESB_SNIPPET_HTML)
+    httpx_mock.add_response(url=FAPESPA_BOLSAS_URL, html=FAPESB_SNIPPET_HTML)
     httpx_mock.add_response(url=CNPQ_MODALIDADES_URL, html=CNPQ_MODALIDADES_SNIPPET_HTML)
     httpx_mock.add_response(url=FAPEAM_BOLSAS_EXTERIOR_URL, html=FAPEAM_SNIPPET_HTML)
 
     with httpx.Client() as client:
         opportunities = fetch_all_automated_opportunities(client, consulted_at=date(2026, 1, 15))
 
-    assert len(opportunities) == 13
+    assert len(opportunities) == 14
     assert {o.agency for o in opportunities} == {
         "CAPES",
         "DAAD",
         "European Commission / Horizon Europe (MSCA)",
         "FAPERJ",
         "FAPESB",
+        "FAPESPA",
         "CNPq",
         "FAPEAM",
     }

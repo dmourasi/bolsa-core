@@ -35,6 +35,7 @@ from bolsa_finder.eligibility import (
     assess_fapeam_pdext,
     assess_faperj_doutorado_sanduiche,
     assess_fapesb_posdoutorado,
+    assess_fapespa_pdo,
     assess_msca_postdoctoral,
 )
 
@@ -107,6 +108,8 @@ FAPERJ_DOUTORADO_SANDUICHE_URL = "https://www.faperj.br/?id=86.5.1"
 FAPESB_POSDOUTORADO_URL = "https://www.fapesb.ba.gov.br/pos-doutorado/"
 
 FAPEAM_BOLSAS_EXTERIOR_URL = "https://www.fapeam.am.gov.br/bolsas/tabela-de-bolsas-no-exterior/"
+
+FAPESPA_BOLSAS_URL = "https://www.fapespa.pa.gov.br/bolsas/"
 
 
 def _fetch_opportunity(
@@ -227,6 +230,24 @@ def fetch_fapesb_posdoutorado(client: httpx.Client, consulted_at: date | None = 
     )
 
 
+def fetch_fapespa_pdo(client: httpx.Client, consulted_at: date | None = None) -> FundingOpportunity:
+    """FAPESPA Pós-Doutorado (PDO) -- abroad-eligible stage, fourth state-agency (FAP) source.
+
+    eligibility_brazilian is always "unknown": the permanent page states
+    the program's purpose but no nationality/institutional-link criteria.
+    """
+    return _fetch_opportunity(
+        client,
+        FAPESPA_BOLSAS_URL,
+        assess_fapespa_pdo,
+        name="Pós-Doutorado (PDO)",
+        agency="FAPESPA",
+        country_or_region="Pará, Brasil (estágio no país ou no exterior)",
+        target_levels=["posdoc"],
+        consulted_at=consulted_at,
+    )
+
+
 def _fetch_multi_modality_opportunities(
     client: httpx.Client,
     url: str,
@@ -323,6 +344,7 @@ ALL_FETCHERS: list[Callable[[httpx.Client, date | None], FundingOpportunity]] = 
     fetch_msca_postdoctoral,
     fetch_faperj_doutorado_sanduiche,
     fetch_fapesb_posdoutorado,
+    fetch_fapespa_pdo,
 ]
 
 MULTI_MODALITY_FETCHERS: list[Callable[[httpx.Client, date | None], list[FundingOpportunity]]] = [
