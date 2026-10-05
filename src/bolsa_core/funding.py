@@ -23,7 +23,7 @@ import httpx
 from pydantic import BaseModel
 from selectolax.parser import HTMLParser
 
-from bolsa_finder.eligibility import (
+from bolsa_core.eligibility import (
     EligibilityLevel,
     assess_capes_pdse,
     assess_capes_print,

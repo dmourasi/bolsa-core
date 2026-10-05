@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pymupdf
 
-from bolsa_finder.lattes import (
+from bolsa_core.lattes import (
     LattesExtract,
     ProvenancedList,
     _paragraphs,
@@ -13,7 +13,7 @@ from bolsa_finder.lattes import (
     parse_lattes_pdf,
     parse_lattes_xml,
 )
-from bolsa_finder.profile import AcademicStage, LanguageProficiency, TimeWindow
+from bolsa_core.profile import AcademicStage, LanguageProficiency, TimeWindow
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "lattes_sample.xml"
 

@@ -2,7 +2,7 @@ from datetime import date
 
 import httpx
 
-from bolsa_finder.funding import (
+from bolsa_core.funding import (
     CAPES_PDSE_URL,
     CAPES_PRINT_URL,
     CNPQ_MODALIDADES_URL,

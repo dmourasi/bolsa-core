@@ -1,8 +1,8 @@
 from datetime import date
 
-from bolsa_finder.openalex import Publication
-from bolsa_finder.profile import Profile
-from bolsa_finder.score import Researcher, score_researcher_fit
+from bolsa_core.openalex import Publication
+from bolsa_core.profile import Profile
+from bolsa_core.score import Researcher, score_researcher_fit
 
 
 def _publication(**overrides) -> Publication:

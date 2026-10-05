@@ -1,4 +1,4 @@
-from bolsa_finder.eligibility import (
+from bolsa_core.eligibility import (
     assess_capes_pdse,
     assess_capes_print,
     assess_cnpq_no_explicit_criteria,

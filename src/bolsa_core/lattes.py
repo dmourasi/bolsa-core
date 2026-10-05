@@ -33,7 +33,7 @@ import pymupdf
 from lxml import etree
 from pydantic import BaseModel, Field
 
-from bolsa_finder.profile import (
+from bolsa_core.profile import (
     AcademicStage,
     LanguageProficiency,
     NonEmptyStr,

@@ -16,8 +16,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from bolsa_finder.openalex import Publication
-from bolsa_finder.profile import Profile
+from bolsa_core.openalex import Publication
+from bolsa_core.profile import Profile
 
 ConfidenceLevel = Literal["high", "medium", "low"]
 

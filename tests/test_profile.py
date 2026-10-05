@@ -3,7 +3,7 @@ from typing import get_args
 import pytest
 import yaml
 
-from bolsa_finder.profile import (
+from bolsa_core.profile import (
     TARGET_LEVEL_DESCRIPTIONS,
     Profile,
     ProfileLoadError,

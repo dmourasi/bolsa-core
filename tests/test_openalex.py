@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from bolsa_finder.openalex import OpenAlexClient
+from bolsa_core.openalex import OpenAlexClient
 
 
 @pytest.fixture

@@ -15,8 +15,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from bolsa_finder.funding import FundingOpportunity
-from bolsa_finder.score import FitScore
+from bolsa_core.funding import FundingOpportunity
+from bolsa_core.score import FitScore
 
 DISCLAIMER = (
     "Todas as informações de prazo, valor e elegibilidade devem ser "

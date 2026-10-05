@@ -2,15 +2,15 @@ import json
 from datetime import date
 from pathlib import Path
 
-from bolsa_finder.funding import FundingOpportunity
-from bolsa_finder.report import (
+from bolsa_core.funding import FundingOpportunity
+from bolsa_core.report import (
     DISCLAIMER,
     build_report,
     load_fit_scores,
     load_funding_opportunities,
     render_markdown,
 )
-from bolsa_finder.score import FitScore
+from bolsa_core.score import FitScore
 
 
 def _funding(**overrides) -> FundingOpportunity:
