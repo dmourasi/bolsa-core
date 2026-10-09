@@ -128,3 +128,39 @@ def test_load_fit_scores_parses_json_array_file(tmp_path: Path) -> None:
 
     assert len(scores) == 1
     assert scores[0].researcher_id == "A1"
+
+
+def test_load_funding_opportunities_flattens_json_array_file(tmp_path: Path) -> None:
+    path = tmp_path / "funding_manual_europe.json"
+    payload = [_funding(name="Swiss").model_dump(), _funding(name="DAAD").model_dump()]
+    path.write_text(json.dumps(payload, default=str), encoding="utf-8")
+
+    opportunities = load_funding_opportunities([path])
+
+    assert {o.name for o in opportunities} == {"Swiss", "DAAD"}
+
+
+def test_render_markdown_includes_research_areas_when_restricted() -> None:
+    funding = _funding(research_areas=["climate science", "oceanography"])
+    report = build_report([funding], [], generated_at=date(2026, 1, 1))
+
+    markdown = render_markdown(report)
+
+    assert "Área(s) de pesquisa: climate science, oceanography" in markdown
+
+
+def test_render_markdown_omits_research_areas_when_any() -> None:
+    report = build_report([_funding()], [], generated_at=date(2026, 1, 1))
+
+    markdown = render_markdown(report)
+
+    assert "Área(s) de pesquisa" not in markdown
+
+
+def test_render_markdown_includes_application_notes_when_present() -> None:
+    funding = _funding(application_notes="Requires a letter from the home institution.")
+    report = build_report([funding], [], generated_at=date(2026, 1, 1))
+
+    markdown = render_markdown(report)
+
+    assert "Observações da candidatura: Requires a letter from the home institution." in markdown

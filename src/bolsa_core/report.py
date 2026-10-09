@@ -115,6 +115,15 @@ def render_markdown(report: Report) -> str:
         lines.append(f"- Elegibilidade para brasileiros: **{funding.eligibility_brazilian}**")
         if funding.eligibility_evidence:
             lines.append(f"  - Trecho do edital/fonte: \"{funding.eligibility_evidence}\"")
+        if funding.research_areas != "any":
+            areas = (
+                ", ".join(funding.research_areas)
+                if isinstance(funding.research_areas, list)
+                else funding.research_areas
+            )
+            lines.append(f"- Área(s) de pesquisa: {areas}")
+        if funding.application_notes:
+            lines.append(f"- Observações da candidatura: {funding.application_notes}")
         lines.append(f"- Fonte: {funding.url} (consultado em {funding.consulted_at})")
         lines.append("")
 
