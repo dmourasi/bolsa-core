@@ -55,6 +55,8 @@ class FundingOpportunity(BaseModel):
     consulted_at: date
     eligibility_brazilian: EligibilityLevel
     eligibility_evidence: str | None = None
+    research_areas: list[str] | Literal["any"] | Unknown = "any"
+    application_notes: str | None = None
 
 
 def fetch_page_text(client: httpx.Client, url: str) -> str | None:

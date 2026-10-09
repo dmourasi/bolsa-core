@@ -33,12 +33,17 @@ class Report(BaseModel):
 
 
 def _parse_concatenated_json_objects(text: str) -> list[dict]:
-    """Parse a file containing one or more JSON objects back-to-back.
+    """Parse a file containing one or more JSON objects back-to-back, or
+    a single JSON array of objects.
 
     `bolsa-finder funding cnpq`/`fapeam` print one JSON object per
     modality, not a JSON array, so a redirected output file (e.g.
     `funding_cnpq.json`) is several concatenated objects -- a plain
     `json.loads` would fail on anything but a single-opportunity file.
+    Manually-assembled sources (see `references/fontes-*.md`) are
+    sometimes written as a single JSON array instead -- each top-level
+    array found is flattened into its individual objects too, so both
+    conventions load the same way.
     """
     decoder = json.JSONDecoder()
     objects: list[dict] = []
@@ -50,7 +55,10 @@ def _parse_concatenated_json_objects(text: str) -> list[dict]:
         if pos >= length:
             break
         obj, pos = decoder.raw_decode(text, pos)
-        objects.append(obj)
+        if isinstance(obj, list):
+            objects.extend(obj)
+        else:
+            objects.append(obj)
     return objects
 
 
