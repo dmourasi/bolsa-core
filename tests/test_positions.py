@@ -27,9 +27,19 @@ SCIENCECAREERS_SNIPPET_HTML = """
 
 EURAXESS_SEARCH_SNIPPET_HTML = """
 <html><body>
+  <select name="job_research_field[]">
+    <option value="311">Statistics</option>
+    <option value="41">Biology</option>
+  </select>
   <a href="/jobs/471908">Postdoc Electron Optics and Instrumentation</a>
   <a href="/jobs/471917">PhD Candidate in Microbiome Research</a>
   <a href="/jobs/471920/apply">not a bare job id -- ignored by the anchored regex</a>
+</body></html>
+"""
+
+EURAXESS_FACET_RESULTS_HTML = """
+<html><body>
+  <a href="/jobs/471636">PhD in biostatistics: biodiversity monitoring</a>
 </body></html>
 """
 
@@ -98,6 +108,10 @@ def test_fetch_sciencecareers_positions_returns_empty_on_http_error(httpx_mock) 
 
 
 def test_fetch_euraxess_positions_filters_by_keyword_in_research_field(httpx_mock) -> None:
+    # One request to resolve the discipline-name -> id map, one to scan
+    # page 0 for the freetext fallback ("microbiology" isn't an exact
+    # discipline name, so it takes that path, not the facet one).
+    httpx_mock.add_response(url=EURAXESS_SEARCH_URL, html=EURAXESS_SEARCH_SNIPPET_HTML)
     httpx_mock.add_response(url=EURAXESS_SEARCH_URL, html=EURAXESS_SEARCH_SNIPPET_HTML)
     httpx_mock.add_response(
         url="https://euraxess.ec.europa.eu/jobs/471908", html=EURAXESS_DETAIL_HTML_UNRELATED
@@ -124,6 +138,7 @@ def test_fetch_euraxess_positions_filters_by_keyword_in_research_field(httpx_moc
 
 def test_fetch_euraxess_positions_skips_detail_fetch_when_disabled(httpx_mock) -> None:
     httpx_mock.add_response(url=EURAXESS_SEARCH_URL, html=EURAXESS_SEARCH_SNIPPET_HTML)
+    httpx_mock.add_response(url=EURAXESS_SEARCH_URL, html=EURAXESS_SEARCH_SNIPPET_HTML)
 
     with httpx.Client() as client:
         positions = fetch_euraxess_positions(
@@ -136,3 +151,31 @@ def test_fetch_euraxess_positions_skips_detail_fetch_when_disabled(httpx_mock) -
     assert positions[0].title == "PhD Candidate in Microbiome Research"
     assert positions[0].organisation == "unknown"
     assert positions[0].deadline == "unknown"
+
+
+def test_fetch_euraxess_positions_uses_research_field_facet_when_keyword_matches() -> None:
+    import httpx as httpx_module
+
+    facet_url = httpx_module.URL(
+        EURAXESS_SEARCH_URL, params=[("f[0]", "job_research_field:311")]
+    )
+
+    def handler(request: httpx_module.Request) -> httpx_module.Response:
+        if request.url.path == "/jobs/search" and not request.url.params:
+            return httpx_module.Response(200, html=EURAXESS_SEARCH_SNIPPET_HTML)
+        if request.url == facet_url:
+            return httpx_module.Response(200, html=EURAXESS_FACET_RESULTS_HTML)
+        if request.url.path == "/jobs/471636":
+            return httpx_module.Response(200, html=EURAXESS_DETAIL_HTML)
+        raise AssertionError(f"Unexpected request: {request.url}")
+
+    transport = httpx.MockTransport(handler)
+    with httpx.Client(transport=transport) as client:
+        positions = fetch_euraxess_positions(
+            client, ["Statistics"], pages=1, consulted_at=date(2026, 10, 10)
+        )
+
+    assert len(positions) == 1
+    assert positions[0].title == "PhD in biostatistics: biodiversity monitoring"
+    assert positions[0].matched_terms == ["Statistics"]
+    assert positions[0].country == "Netherlands"

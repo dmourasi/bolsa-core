@@ -125,11 +125,75 @@ def fetch_sciencecareers_positions(
 # page's Research Field/Offer Description text client-side, same as
 # score.py's literal term-overlap approach -- never silently assumes the
 # EURAXESS "showing results" count reflects the query.
+#
+# There IS a real server-side filter, though: the `f[0]=job_research_field:
+# <id>` facet (verified 2026-10-10 -- filters from 6731 down to 43 for id
+# 311 "Statistics", and multiple f[N] params OR together, and `page=N`
+# paginates the filtered set correctly). The catch is it's discipline-coded,
+# not free text: there is no "Bioinformatics" or "Microbiome" field in its
+# ~366-option taxonomy, only broad disciplines like "Statistics"/"Biology"/
+# "Ecology"/"Environmental science". So a keyword that happens to equal one
+# of those discipline names gets the precise, fully-paginated facet query;
+# any keyword that doesn't (most free-text research terms) falls back to
+# the unfiltered-scan-and-client-filter approach described above, over
+# whatever's left of `pages`.
 
 EURAXESS_SEARCH_URL = "https://euraxess.ec.europa.eu/jobs/search"
 EURAXESS_BASE_URL = "https://euraxess.ec.europa.eu"
 
 _JOB_LINK_RE = re.compile(r"^/jobs/\d+$")
+
+
+def _euraxess_research_field_ids(client: httpx.Client) -> dict[str, str]:
+    """Map lowercased EURAXESS research-field names to their facet ids.
+
+    One extra request per call to re-read the search page's own <select>
+    (its options could change over time, so this isn't hardcoded).
+    Returns {} if the page/select can't be found -- callers then skip
+    facet filtering entirely rather than guessing an id.
+    """
+    try:
+        response = client.get(EURAXESS_SEARCH_URL, follow_redirects=True)
+        response.raise_for_status()
+    except httpx.HTTPError:
+        return {}
+    tree = HTMLParser(response.text)
+    select = tree.css_first('select[name="job_research_field[]"]')
+    if select is None:
+        return {}
+    return {
+        option.text(strip=True).lower(): option.attributes.get("value", "")
+        for option in select.css("option")
+        if option.attributes.get("value")
+    }
+
+
+def _list_job_titles_by_research_field(
+    client: httpx.Client, field_ids: list[str], pages: int
+) -> dict[str, str]:
+    """List job hrefs -> titles matching any of the given facet ids, paginated."""
+    titles_by_href: dict[str, str] = {}
+    params = [("f[%d]" % i, f"job_research_field:{field_id}") for i, field_id in enumerate(field_ids)]
+    for page in range(pages):
+        page_params = params + ([("page", page)] if page else [])
+        try:
+            response = client.get(EURAXESS_SEARCH_URL, params=page_params, follow_redirects=True)
+            response.raise_for_status()
+        except httpx.HTTPError:
+            break
+        tree = HTMLParser(response.text)
+        found_any = False
+        for anchor in tree.css("a"):
+            href = (anchor.attributes.get("href") or "").strip()
+            if _JOB_LINK_RE.match(href):
+                found_any = True
+                if href not in titles_by_href:
+                    title = _clean_text(anchor.text(strip=True))
+                    if title:
+                        titles_by_href[href] = title
+        if not found_any:
+            break  # ran past the last page of results
+    return titles_by_href
 
 
 def _euraxess_detail_fields(client: httpx.Client, url: str) -> dict[str, str]:
@@ -170,34 +234,62 @@ def fetch_euraxess_positions(
     fetch_details: bool = True,
     consulted_at: date | None = None,
 ) -> list[Position]:
-    """Fetch recent EURAXESS listings and keep only those matching keywords.
+    """Fetch EURAXESS listings matching the given keywords.
 
-    `pages` controls how many result pages (10 listings each) to scan --
-    keyword filtering happens client-side here, so a higher `pages` costs
-    more requests for the same chance of a match, not a more targeted
-    query. `fetch_details=False` skips the per-listing detail fetch
-    (faster, but country/organisation/deadline/eligibility_note stay
-    "unknown"/None).
+    Two paths, combined:
+
+    1. Keywords that exactly match one of EURAXESS's own ~366 discipline
+       names (case-insensitive -- e.g. "statistics", "biology",
+       "ecology") use the real server-side `f[N]=job_research_field:<id>`
+       facet filter, fully paginated (`pages` result pages of 10, filtered
+       -- a higher `pages` here means more of an ALREADY-FILTERED set).
+    2. Keywords that don't match any discipline name (most free-text
+       research terms, e.g. "microbiome", "bioinformatics") fall back to
+       scanning the newest `pages` pages UNFILTERED and matching
+       client-side against title + Research Field + Organisation -- a
+       higher `pages` here means more of the newest listings scanned for
+       a chance match, not a more targeted query.
+
+    `fetch_details=False` skips the per-listing detail fetch entirely
+    (faster, but country/organisation/deadline stay "unknown", and path 2
+    degrades to title-only matching).
     """
     consulted = consulted_at or date.today()
+
+    field_name_to_id = _euraxess_research_field_ids(client) if keywords else {}
+    facet_keywords = [k for k in keywords if k.lower() in field_name_to_id]
+    freetext_keywords = [k for k in keywords if k.lower() not in field_name_to_id]
+
     titles_by_href: dict[str, str] = {}
-    for page in range(pages):
-        try:
-            response = client.get(
-                EURAXESS_SEARCH_URL,
-                params={"page": page} if page else {},
-                follow_redirects=True,
-            )
-            response.raise_for_status()
-        except httpx.HTTPError:
-            break
-        tree = HTMLParser(response.text)
-        for anchor in tree.css("a"):
-            href = anchor.attributes.get("href") or ""
-            if _JOB_LINK_RE.match(href) and href not in titles_by_href:
-                title = _clean_text(anchor.text(strip=True))
-                if title:
-                    titles_by_href[href] = title
+    # One facet query per keyword (not one combined OR query) so each
+    # resulting href can be attributed back to the specific keyword that
+    # matched it, for matched_terms below.
+    facet_keywords_by_href: dict[str, list[str]] = {}
+    for keyword in facet_keywords:
+        field_id = field_name_to_id[keyword.lower()]
+        by_facet = _list_job_titles_by_research_field(client, [field_id], pages)
+        titles_by_href.update(by_facet)
+        for href in by_facet:
+            facet_keywords_by_href.setdefault(href, []).append(keyword)
+
+    if freetext_keywords:
+        for page in range(pages):
+            try:
+                response = client.get(
+                    EURAXESS_SEARCH_URL,
+                    params={"page": page} if page else {},
+                    follow_redirects=True,
+                )
+                response.raise_for_status()
+            except httpx.HTTPError:
+                break
+            tree = HTMLParser(response.text)
+            for anchor in tree.css("a"):
+                href = (anchor.attributes.get("href") or "").strip()
+                if _JOB_LINK_RE.match(href) and href not in titles_by_href:
+                    title = _clean_text(anchor.text(strip=True))
+                    if title:
+                        titles_by_href[href] = title
 
     positions: list[Position] = []
     for href, title in titles_by_href.items():
@@ -206,7 +298,13 @@ def fetch_euraxess_positions(
         haystack = " ".join(
             [title, fields.get("Research Field", ""), fields.get("Organisation/Company", "")]
         )
-        matched = _matches_any_term(haystack, keywords)
+        # A facet hit is already a confirmed match on that discipline even
+        # when the (differently-worded) discipline name isn't literally in
+        # the title/fields text -- e.g. field "Statistics" matching a
+        # listing titled "Multi-source data and non-probability samples".
+        matched = facet_keywords_by_href.get(href, []) + _matches_any_term(
+            haystack, freetext_keywords
+        )
         if not matched:
             continue
         # eligibility_note is always None here: the "Requirements" section
