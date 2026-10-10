@@ -49,11 +49,18 @@ def test_parse_lattes_xml_extracts_structured_fields() -> None:
     assert extract.last_update == date(2026, 1, 15)
     assert extract.source_format == "xml"
 
-    assert len(extract.education) == 1
-    assert extract.education[0].level == "doutorado"
-    assert extract.education[0].institution == "Universidade Ficticia"
-    assert extract.education[0].started == date(2022, 1, 1)
-    assert extract.education[0].finished is None
+    assert len(extract.education) == 2
+    levels = {e.level: e for e in extract.education}
+    assert levels["especializacao"].institution == "Faculdade Ficticia"
+    assert levels["especializacao"].started == date(2021, 1, 1)
+    assert levels["especializacao"].finished == date(2022, 1, 1)
+    assert levels["doutorado"].institution == "Universidade Ficticia"
+    assert levels["doutorado"].started == date(2022, 1, 1)
+    assert levels["doutorado"].finished is None
+
+    assert len(extract.professional_activities) == 1
+    assert extract.professional_activities[0].institution == "Universidade Ficticia"
+    assert extract.professional_activities[0].role == "BOLSISTA"
 
     assert set(extract.cnpq_areas.values) == {"Estatistica Aplicada", "Bioinformatica"}
     assert extract.cnpq_areas.origin == "lattes_cv"

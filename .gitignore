@@ -1,7 +1,7 @@
 knowledge-base/
 profile.yaml
 *.pdf
-fixtures/private/
+**/fixtures/private/
 __pycache__/
 *.pyc
 .venv/

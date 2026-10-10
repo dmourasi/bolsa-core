@@ -13,12 +13,17 @@ LattesExtract, so there is no field to accidentally serialize. The parser
 must never read those XML attributes/tags into any model, and must never
 log or persist the raw XML content.
 
-KNOWN LIMITATION (see project plan, Fase B): `parse_lattes_xml` below is
-implemented against the publicly documented CNPq Lattes XML schema
-(ESTRUTURA_CURRICULO) from general knowledge, NOT from inspecting a real
-exported file yet. It must be re-validated against a real sample in
-`fixtures/private/` before being trusted for an actual Lattes export --
-tag names/casing/attributes may differ by Lattes export version.
+VALIDATED (2026-10-10) against one real export in `fixtures/private/`
+(not committed -- real PII). Three divergences from the publicly
+documented CNPq schema this was originally built against were found and
+fixed: VINCULOS is a self-closing leaf directly under ATUACAO-PROFISSIONAL
+(no nested VINCULO child), PROJETO-DE-PESQUISA nests under
+ATIVIDADES-DE-PARTICIPACAO-EM-PROJETO/PARTICIPACAO-EM-PROJETO rather than
+a flat top-level wrapper, and ESPECIALIZACAO was missing from the
+education tag list entirely -- see the inline NOTE comments at each
+fix site. Only validated against one export version/year; a different
+Lattes export vintage may still diverge, so unrecognized/missing tags
+are still skipped, never guessed.
 """
 
 from __future__ import annotations
@@ -137,9 +142,8 @@ def _parse_date(value: str | None) -> date | None:
 def parse_lattes_xml(xml_path: str | Path) -> LattesExtract:
     """Parse a Lattes XML export into a LattesExtract.
 
-    PROVISIONAL (see module docstring): built from the publicly documented
-    CNPq schema, pending validation against a real export in
-    fixtures/private/. Unrecognized/missing tags are skipped, never guessed.
+    Validated against a real export (see module docstring). Unrecognized/
+    missing tags are skipped, never guessed.
     """
     tree = etree.parse(str(xml_path))
     root = tree.getroot()
@@ -153,6 +157,7 @@ def parse_lattes_xml(xml_path: str | Path) -> LattesExtract:
     education: list[Education] = []
     for tag, level in [
         ("GRADUACAO", "graduacao"),
+        ("ESPECIALIZACAO", "especializacao"),
         ("MESTRADO", "mestrado"),
         ("DOUTORADO", "doutorado"),
         ("POS-DOUTORADO", "pos-doutorado"),
@@ -167,9 +172,14 @@ def parse_lattes_xml(xml_path: str | Path) -> LattesExtract:
                 )
             )
 
+    # NOTE: a real export nests one <VINCULOS .../> leaf per historical
+    # stint directly under ATUACAO-PROFISSIONAL (attributes on VINCULOS
+    # itself) -- there is no separate <VINCULO> child, unlike what the
+    # publicly documented schema implies. Validated against a real
+    # export in fixtures/private/ (see lattes.py module docstring).
     professional_activities: list[ProfessionalActivity] = []
-    for node in root.findall(".//ATUACOES-PROFISSIONAIS/ATUACAO-PROFISSIONAL/VINCULOS/VINCULO"):
-        parent = node.getparent().getparent()
+    for node in root.findall(".//ATUACOES-PROFISSIONAIS/ATUACAO-PROFISSIONAL/VINCULOS"):
+        parent = node.getparent()
         institution = parent.get("NOME-INSTITUICAO", "") if parent is not None else ""
         professional_activities.append(
             ProfessionalActivity(
@@ -196,8 +206,13 @@ def parse_lattes_xml(xml_path: str | Path) -> LattesExtract:
             )
         )
 
+    # NOTE: a real export nests PROJETO-DE-PESQUISA under
+    # ATIVIDADES-DE-PARTICIPACAO-EM-PROJETO/PARTICIPACAO-EM-PROJETO
+    # (itself inside the ATUACAO-PROFISSIONAL the project ran under),
+    # not under a flat top-level PROJETOS-DE-PESQUISA wrapper. Validated
+    # against a real export in fixtures/private/.
     projects: list[Project] = []
-    for node in root.findall(".//PROJETOS-DE-PESQUISA/PROJETO-DE-PESQUISA"):
+    for node in root.findall(".//ATIVIDADES-DE-PARTICIPACAO-EM-PROJETO/PARTICIPACAO-EM-PROJETO/PROJETO-DE-PESQUISA"):
         projects.append(
             Project(
                 title=node.get("NOME-DO-PROJETO", ""),

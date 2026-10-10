@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <!--
-Synthetic, fictional Lattes-shaped XML for tests only. Structure is a
-best-effort approximation of the publicly documented CNPq schema, NOT
-derived from a real export (see lattes.py module docstring, Fase B).
+Synthetic, fictional Lattes-shaped XML for tests only. Structure matches
+a real export validated in fixtures/private/ (see lattes.py module
+docstring): VINCULOS as a self-closing leaf directly under
+ATUACAO-PROFISSIONAL (no nested VINCULO), and PROJETO-DE-PESQUISA nested
+under ATIVIDADES-DE-PARTICIPACAO-EM-PROJETO/PARTICIPACAO-EM-PROJETO.
 All names/numbers below are made up. Includes fake PII attributes
 (CPF, RG, ENDERECO, TELEFONE, DATA-NASCIMENTO) specifically so tests can
 assert they never make it into LattesExtract.
@@ -12,13 +14,19 @@ assert they never make it into LattesExtract.
       CPF="000.000.000-00" RG="0000000" DATA-NASCIMENTO="01011995"
       ENDERECO="Rua Ficticia, 123" TELEFONE="(00) 00000-0000">
     <FORMACAO-ACADEMICA-TITULACAO>
+      <ESPECIALIZACAO NOME-INSTITUICAO="Faculdade Ficticia" ANO-DE-INICIO="2021" ANO-DE-CONCLUSAO="2022"/>
       <DOUTORADO NOME-INSTITUICAO="Universidade Ficticia" ANO-DE-INICIO="2022" ANO-DE-CONCLUSAO=""/>
     </FORMACAO-ACADEMICA-TITULACAO>
     <ATUACOES-PROFISSIONAIS>
       <ATUACAO-PROFISSIONAL NOME-INSTITUICAO="Universidade Ficticia">
-        <VINCULOS>
-          <VINCULO TIPO-DE-VINCULO="BOLSISTA" ANO-INICIO="2022" ANO-FIM=""/>
-        </VINCULOS>
+        <VINCULOS TIPO-DE-VINCULO="BOLSISTA" ANO-INICIO="2022" ANO-FIM=""/>
+        <ATIVIDADES-DE-PARTICIPACAO-EM-PROJETO>
+          <PARTICIPACAO-EM-PROJETO ANO-INICIO="2023" ANO-FIM="">
+            <PROJETO-DE-PESQUISA NOME-DO-PROJETO="Microbioma e estatistica ambiental"
+                DESCRICAO-DO-PROJETO="Analise de dados de NGS de microbioma usando modelos mistos."
+                ANO-INICIO="2023" ANO-FIM=""/>
+          </PARTICIPACAO-EM-PROJETO>
+        </ATIVIDADES-DE-PARTICIPACAO-EM-PROJETO>
       </ATUACAO-PROFISSIONAL>
     </ATUACOES-PROFISSIONAIS>
     <AREAS-DE-ATUACAO>
@@ -28,11 +36,6 @@ assert they never make it into LattesExtract.
     <IDIOMAS>
       <IDIOMA NOME="Ingles" PROFICIENCIA-LEITURA="Bom"/>
     </IDIOMAS>
-    <PROJETOS-DE-PESQUISA>
-      <PROJETO-DE-PESQUISA NOME-DO-PROJETO="Microbioma e estatistica ambiental"
-          DESCRICAO-DO-PROJETO="Analise de dados de NGS de microbioma usando modelos mistos."
-          ANO-INICIO="2023" ANO-FIM=""/>
-    </PROJETOS-DE-PESQUISA>
     <PRODUCAO-BIBLIOGRAFICA>
       <ARTIGOS-PUBLICADOS>
         <ARTIGO-PUBLICADO>
