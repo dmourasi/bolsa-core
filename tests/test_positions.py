@@ -246,3 +246,126 @@ def test_fetch_euraxess_positions_reports_unreachable_site() -> None:
         "euraxess: research-field list request failed (ConnectError)",
         "euraxess: listing request (page 1) failed (ConnectError)",
     ]
+
+
+# Mirrors the real search-result card and job-page markup (verified
+# against the live site on 2026-11-10), trimmed to the parts that are read.
+SCIENCECAREERS_CARD_HTML = """
+<html><body><ul>
+<li class="lister__item cf lister__item--wol-widget" id="item-680908">
+  <div class="lister__details cf js-clickable">
+    <h3 class="lister__header"><a href="
+        /job/680908/professor-all-ranks/
+    " class="js-clickable-area-link"><span>Professor (all ranks) Human Health</span></a></h3>
+    <ul class="lister__meta">
+      <li class="lister__meta-item lister__meta-item--location">Tempe, Arizona (US)</li>
+      <li class="lister__meta-item lister__meta-item--salary">DOE</li>
+      <li class="lister__meta-item lister__meta-item--recruiter">Arizona State University</li>
+    </ul>
+    <p class="lister__description js-clamp-2">Research on the gut microbiome and...</p>
+  </div>
+  <div class="lister__footer cf">
+    <p class="lister__view-details"><a href="
+        /job/680908/professor-all-ranks/
+    " class="button">View details <span class="hidden">Professor (all ranks) Human Health</span></a></p>
+  </div>
+</li>
+<li class="lister__item cf" id="item-680001">
+  <div class="lister__details cf js-clickable">
+    <h3 class="lister__header"><a href="/job/680001/postdoc/"><span>Postdoctoral Fellow</span></a></h3>
+    <ul class="lister__meta">
+      <li class="lister__meta-item lister__meta-item--location">Texas</li>
+    </ul>
+  </div>
+</li>
+</ul></body></html>
+"""
+
+SCIENCECAREERS_DETAIL_HTML = """
+<html><body>
+<dl class="mds-list mds-list--definition">
+  <dt class="mds-list__key">Employer</dt>
+  <dd class="mds-list__value"><a href="/employer/x/asu">Arizona State University</a></dd>
+  <dt class="mds-list__key">Location</dt>
+  <dd class="mds-list__value">Tempe, Arizona (US)</dd>
+  <dt class="mds-list__key">Closing date</dt>
+  <dd class="mds-list__value">Nov 22, 2026</dd>
+</dl>
+<dl class="mds-list mds-list--definition">
+  <dt class="mds-list__key">Discipline</dt>
+  <dd class="mds-list__value"><a href="/jobs/life-sciences">Life Sciences</a>,
+      <a href="/jobs/bioengineering">Bioengineering</a></dd>
+  <dt class="mds-list__key">Job Type</dt>
+  <dd class="mds-list__value"><a href="/jobs/faculty">Faculty</a>,
+      <a href="/jobs/postdoc">Postdoc</a></dd>
+</dl>
+</body></html>
+"""
+
+_SC_JOB_1 = "https://jobs.sciencecareers.org/job/680908/professor-all-ranks/"
+_SC_JOB_2 = "https://jobs.sciencecareers.org/job/680001/postdoc/"
+
+
+def test_fetch_sciencecareers_positions_reads_recruiter_and_location_from_cards(httpx_mock) -> None:
+    httpx_mock.add_response(
+        url=f"{SCIENCECAREERS_SEARCH_URL}?keywords=microbiome", html=SCIENCECAREERS_CARD_HTML
+    )
+
+    with httpx.Client() as client:
+        positions = fetch_sciencecareers_positions(client, ["microbiome"])
+
+    assert [p.url for p in positions] == [_SC_JOB_1, _SC_JOB_2]
+    first, second = positions
+    assert first.title == "Professor (all ranks) Human Health"
+    assert first.organisation == "Arizona State University"
+    assert first.location == "Tempe, Arizona (US)"
+    # The keyword is only in the card's description, not its title.
+    assert first.matched_terms == ["microbiome"]
+    # Never derived from the free-text location; not on the search page.
+    assert first.country == "unknown"
+    assert first.deadline == "unknown"
+    assert first.position_type == "unknown"
+    # A card without a recruiter line stays "unknown" rather than guessed.
+    assert second.organisation == "unknown"
+    assert second.location == "Texas"
+
+
+def test_fetch_sciencecareers_positions_fetch_details_fills_deadline_and_job_type(
+    httpx_mock,
+) -> None:
+    httpx_mock.add_response(
+        url=f"{SCIENCECAREERS_SEARCH_URL}?keywords=microbiome", html=SCIENCECAREERS_CARD_HTML
+    )
+    httpx_mock.add_response(url=_SC_JOB_1, html=SCIENCECAREERS_DETAIL_HTML)
+    httpx_mock.add_response(url=_SC_JOB_2, status_code=500)
+    errors: list[str] = []
+
+    with httpx.Client() as client:
+        positions = fetch_sciencecareers_positions(
+            client, ["microbiome"], fetch_details=True, errors=errors
+        )
+
+    first, second = positions
+    assert first.deadline == "Nov 22, 2026"
+    assert first.position_type == "Faculty, Postdoc"
+    assert second.deadline == "unknown"
+    assert second.position_type == "unknown"
+    assert errors == ["sciencecareers: 1 of 2 job detail requests failed"]
+
+
+def test_fetch_sciencecareers_positions_fetch_details_only_covers_listings_within_limit(
+    httpx_mock,
+) -> None:
+    httpx_mock.add_response(
+        url=f"{SCIENCECAREERS_SEARCH_URL}?keywords=microbiome", html=SCIENCECAREERS_CARD_HTML
+    )
+    httpx_mock.add_response(url=_SC_JOB_1, html=SCIENCECAREERS_DETAIL_HTML)
+
+    with httpx.Client() as client:
+        positions = fetch_sciencecareers_positions(
+            client, ["microbiome"], limit=1, fetch_details=True
+        )
+
+    # httpx_mock fails the test on any unexpected request, so this also
+    # proves the second listing's page was never fetched.
+    assert [p.url for p in positions] == [_SC_JOB_1]

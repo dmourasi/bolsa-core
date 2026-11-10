@@ -37,6 +37,11 @@ class Position(BaseModel):
     source: str  # "euraxess" | "sciencecareers"
     consulted_at: date
     deadline: str | Unknown = "unknown"
+    # Free-text place exactly as the source prints it (e.g. "Tempe, Arizona
+    # (US)", "Texas"). Kept apart from `country` because these strings
+    # often name only a city/state, and deriving a country from them would
+    # be a guess.
+    location: str | Unknown = "unknown"
     matched_terms: list[str] = []
     eligibility_note: str | None = None
 
@@ -72,7 +77,53 @@ def _matches_any_term(haystack: str, terms: list[str]) -> list[str]:
 # on 2026-10-10 -- returns results whose titles/descriptions actually
 # contain the keyword, unlike EURAXESS below).
 
+#
+# Markup verified 2026-11-10. Each search result is an <li
+# class="lister__item"> holding the title link plus a <ul
+# class="lister__meta"> with location and recruiter, so those two come
+# free with the search request. The closing date and job type (Faculty,
+# Postdoc, ...) are only on the job's own page, in <dt
+# class="mds-list__key">/<dd class="mds-list__value"> pairs.
+
 SCIENCECAREERS_SEARCH_URL = "https://jobs.sciencecareers.org/jobs/"
+
+
+def _enclosing_lister_item(node):
+    """Return the <li class="lister__item"> search-result card around `node`, if any."""
+    current = node.parent
+    while current is not None:
+        if current.tag == "li" and "lister__item" in (current.attributes.get("class") or ""):
+            return current
+        current = current.parent
+    return None
+
+
+def _node_text(parent, selector: str) -> str:
+    node = parent.css_first(selector) if parent is not None else None
+    return _clean_text(node.text(separator=" ", strip=True)) if node is not None else ""
+
+
+def _sciencecareers_detail_fields(client: httpx.Client, url: str) -> dict[str, str] | None:
+    """Pull the labelled key/value fields off a Science Careers job page.
+
+    Returns None when the page can't be fetched (so the caller can count
+    the failure) and {} when it loads but has no such fields.
+    """
+    try:
+        response = client.get(url, follow_redirects=True)
+        response.raise_for_status()
+    except httpx.HTTPError:
+        return None
+    tree = HTMLParser(response.text)
+    fields: dict[str, str] = {}
+    for key, value in zip(tree.css("dt.mds-list__key"), tree.css("dd.mds-list__value")):
+        label = _clean_text(key.text(strip=True))
+        if label and label not in fields:
+            # Multi-valued fields are comma-separated links ("Faculty,
+            # Postdoc"); joining text nodes with a space leaves " ," behind.
+            text = _clean_text(value.text(separator=" ", strip=True))
+            fields[label] = re.sub(r"\s+,", ",", text)
+    return fields
 
 
 def fetch_sciencecareers_positions(
@@ -80,17 +131,27 @@ def fetch_sciencecareers_positions(
     keywords: list[str],
     *,
     limit: int = 25,
+    fetch_details: bool = False,
     consulted_at: date | None = None,
     errors: list[str] | None = None,
 ) -> list[Position]:
     """Search Science Careers by keyword and return matching listings.
 
-    One request per call (keywords are OR'd into a single query string
-    the way the site's own search box does), not one request per
-    keyword -- keep this polite.
+    One search request per call (keywords are OR'd into a single query
+    string the way the site's own search box does), not one request per
+    keyword -- keep this polite. That request alone fills `organisation`
+    and `location`.
 
-    A failed request yields [] and, when `errors` is given, one entry
-    appended to it (see _record_failure).
+    `fetch_details=True` additionally fetches each returned listing's own
+    page (so up to `limit` more requests) to fill `deadline` ("Closing
+    date") and `position_type` ("Job Type"), which the search page doesn't
+    print. `country` always stays "unknown": the site only gives a
+    free-text location, see Position.location.
+
+    A failed search request yields [] and, when `errors` is given, one
+    entry appended to it (see _record_failure). Failed detail requests
+    leave that listing's fields "unknown" and are reported as a single
+    summary entry.
     """
     consulted = consulted_at or date.today()
     try:
@@ -118,21 +179,40 @@ def fetch_sciencecareers_positions(
         if not title or title.lower() == "view details":
             continue
         seen_urls.add(url)
-        matched = _matches_any_term(title, keywords)
+        card = _enclosing_lister_item(anchor)
+        organisation = _node_text(card, ".lister__meta-item--recruiter")
+        location = _node_text(card, ".lister__meta-item--location")
+        description = _node_text(card, ".lister__description")
+        matched = _matches_any_term(" ".join([title, organisation, description]), keywords)
         positions.append(
             Position(
                 title=title,
-                organisation="unknown",
+                organisation=organisation or "unknown",
                 country="unknown",
                 position_type="unknown",
                 url=url,
                 source="sciencecareers",
                 consulted_at=consulted,
+                location=location or "unknown",
                 matched_terms=matched,
             )
         )
         if len(positions) >= limit:
             break
+
+    if fetch_details:
+        failed = 0
+        for position in positions:
+            fields = _sciencecareers_detail_fields(client, position.url)
+            if fields is None:
+                failed += 1
+                continue
+            position.deadline = fields.get("Closing date") or "unknown"
+            position.position_type = fields.get("Job Type") or "unknown"
+        if failed and errors is not None:
+            errors.append(
+                f"sciencecareers: {failed} of {len(positions)} job detail requests failed"
+            )
     return positions
 
 
