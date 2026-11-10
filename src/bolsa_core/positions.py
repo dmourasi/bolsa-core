@@ -45,6 +45,22 @@ def _clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _record_failure(errors: list[str] | None, source: str, what: str, exc: httpx.HTTPError) -> None:
+    """Append a one-line description of a failed request to `errors`, if given.
+
+    Fetchers here return what they could get instead of raising, which
+    makes "the source blocked us" indistinguishable from "nothing matched"
+    unless the caller passes an `errors` list to collect these.
+    """
+    if errors is None:
+        return
+    if isinstance(exc, httpx.HTTPStatusError):
+        reason = f"HTTP {exc.response.status_code}"
+    else:
+        reason = type(exc).__name__
+    errors.append(f"{source}: {what} failed ({reason})")
+
+
 def _matches_any_term(haystack: str, terms: list[str]) -> list[str]:
     haystack_lower = haystack.lower()
     return [t for t in terms if t.lower() in haystack_lower]
@@ -65,12 +81,16 @@ def fetch_sciencecareers_positions(
     *,
     limit: int = 25,
     consulted_at: date | None = None,
+    errors: list[str] | None = None,
 ) -> list[Position]:
     """Search Science Careers by keyword and return matching listings.
 
     One request per call (keywords are OR'd into a single query string
     the way the site's own search box does), not one request per
     keyword -- keep this polite.
+
+    A failed request yields [] and, when `errors` is given, one entry
+    appended to it (see _record_failure).
     """
     consulted = consulted_at or date.today()
     try:
@@ -80,7 +100,8 @@ def fetch_sciencecareers_positions(
             follow_redirects=True,
         )
         response.raise_for_status()
-    except httpx.HTTPError:
+    except httpx.HTTPError as exc:
+        _record_failure(errors, "sciencecareers", "search request", exc)
         return []
 
     tree = HTMLParser(response.text)
@@ -137,6 +158,13 @@ def fetch_sciencecareers_positions(
 # any keyword that doesn't (most free-text research terms) falls back to
 # the unfiltered-scan-and-client-filter approach described above, over
 # whatever's left of `pages`.
+#
+# Re-verified 2026-11-10: the site now answers ANY query string on the
+# search page (the facet above, `keywords`, even plain `page=1`) with a
+# 403 anti-bot page; only the bare URL (newest 10 listings) still returns
+# 200. This is deliberately not worked around. Both paths below degrade to
+# whatever the bare URL gives, and each refused request is reported
+# through `errors` so callers can tell "blocked" from "no match".
 
 EURAXESS_SEARCH_URL = "https://euraxess.ec.europa.eu/jobs/search"
 EURAXESS_BASE_URL = "https://euraxess.ec.europa.eu"
@@ -144,7 +172,9 @@ EURAXESS_BASE_URL = "https://euraxess.ec.europa.eu"
 _JOB_LINK_RE = re.compile(r"^/jobs/\d+$")
 
 
-def _euraxess_research_field_ids(client: httpx.Client) -> dict[str, str]:
+def _euraxess_research_field_ids(
+    client: httpx.Client, errors: list[str] | None = None
+) -> dict[str, str]:
     """Map lowercased EURAXESS research-field names to their facet ids.
 
     One extra request per call to re-read the search page's own <select>
@@ -155,7 +185,8 @@ def _euraxess_research_field_ids(client: httpx.Client) -> dict[str, str]:
     try:
         response = client.get(EURAXESS_SEARCH_URL, follow_redirects=True)
         response.raise_for_status()
-    except httpx.HTTPError:
+    except httpx.HTTPError as exc:
+        _record_failure(errors, "euraxess", "research-field list request", exc)
         return {}
     tree = HTMLParser(response.text)
     select = tree.css_first('select[name="job_research_field[]"]')
@@ -169,7 +200,10 @@ def _euraxess_research_field_ids(client: httpx.Client) -> dict[str, str]:
 
 
 def _list_job_titles_by_research_field(
-    client: httpx.Client, field_ids: list[str], pages: int
+    client: httpx.Client,
+    field_ids: list[str],
+    pages: int,
+    errors: list[str] | None = None,
 ) -> dict[str, str]:
     """List job hrefs -> titles matching any of the given facet ids, paginated."""
     titles_by_href: dict[str, str] = {}
@@ -179,7 +213,10 @@ def _list_job_titles_by_research_field(
         try:
             response = client.get(EURAXESS_SEARCH_URL, params=page_params, follow_redirects=True)
             response.raise_for_status()
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            _record_failure(
+                errors, "euraxess", f"research-field filter request (page {page + 1})", exc
+            )
             break
         tree = HTMLParser(response.text)
         found_any = False
@@ -233,6 +270,7 @@ def fetch_euraxess_positions(
     pages: int = 2,
     fetch_details: bool = True,
     consulted_at: date | None = None,
+    errors: list[str] | None = None,
 ) -> list[Position]:
     """Fetch EURAXESS listings matching the given keywords.
 
@@ -253,10 +291,16 @@ def fetch_euraxess_positions(
     `fetch_details=False` skips the per-listing detail fetch entirely
     (faster, but country/organisation/deadline stay "unknown", and path 2
     degrades to title-only matching).
+
+    A refused/failed listing request never raises: that path just
+    contributes nothing, and, when `errors` is given, one entry is
+    appended to it per failed request (see _record_failure). Failed
+    per-listing detail fetches are not reported -- they only leave that
+    listing's fields "unknown".
     """
     consulted = consulted_at or date.today()
 
-    field_name_to_id = _euraxess_research_field_ids(client) if keywords else {}
+    field_name_to_id = _euraxess_research_field_ids(client, errors) if keywords else {}
     facet_keywords = [k for k in keywords if k.lower() in field_name_to_id]
     freetext_keywords = [k for k in keywords if k.lower() not in field_name_to_id]
 
@@ -267,7 +311,7 @@ def fetch_euraxess_positions(
     facet_keywords_by_href: dict[str, list[str]] = {}
     for keyword in facet_keywords:
         field_id = field_name_to_id[keyword.lower()]
-        by_facet = _list_job_titles_by_research_field(client, [field_id], pages)
+        by_facet = _list_job_titles_by_research_field(client, [field_id], pages, errors)
         titles_by_href.update(by_facet)
         for href in by_facet:
             facet_keywords_by_href.setdefault(href, []).append(keyword)
@@ -281,7 +325,8 @@ def fetch_euraxess_positions(
                     follow_redirects=True,
                 )
                 response.raise_for_status()
-            except httpx.HTTPError:
+            except httpx.HTTPError as exc:
+                _record_failure(errors, "euraxess", f"listing request (page {page + 1})", exc)
                 break
             tree = HTMLParser(response.text)
             for anchor in tree.css("a"):

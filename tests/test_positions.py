@@ -179,3 +179,70 @@ def test_fetch_euraxess_positions_uses_research_field_facet_when_keyword_matches
     assert positions[0].title == "PhD in biostatistics: biodiversity monitoring"
     assert positions[0].matched_terms == ["Statistics"]
     assert positions[0].country == "Netherlands"
+
+
+def test_fetch_sciencecareers_positions_reports_http_error_when_errors_given(httpx_mock) -> None:
+    httpx_mock.add_response(
+        url=f"{SCIENCECAREERS_SEARCH_URL}?keywords=microbiome", status_code=500
+    )
+    errors: list[str] = []
+
+    with httpx.Client() as client:
+        positions = fetch_sciencecareers_positions(client, ["microbiome"], errors=errors)
+
+    assert positions == []
+    assert errors == ["sciencecareers: search request failed (HTTP 500)"]
+
+
+def test_fetch_sciencecareers_positions_leaves_errors_empty_on_success(httpx_mock) -> None:
+    httpx_mock.add_response(
+        url=f"{SCIENCECAREERS_SEARCH_URL}?keywords=microbiome",
+        html=SCIENCECAREERS_SNIPPET_HTML,
+    )
+    errors: list[str] = []
+
+    with httpx.Client() as client:
+        fetch_sciencecareers_positions(client, ["microbiome"], errors=errors)
+
+    assert errors == []
+
+
+def test_fetch_euraxess_positions_reports_blocked_filter_and_pagination() -> None:
+    # Mirrors the site's behavior since 2026-11: the bare search URL answers
+    # 200, any query string (facet filter, page=N) answers 403.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/jobs/search" and not request.url.params:
+            return httpx.Response(200, html=EURAXESS_SEARCH_SNIPPET_HTML)
+        if request.url.path == "/jobs/search":
+            return httpx.Response(403, html="<html><title>Sorry</title></html>")
+        if request.url.path == "/jobs/471917":
+            return httpx.Response(200, html=EURAXESS_DETAIL_HTML)
+        return httpx.Response(200, html=EURAXESS_DETAIL_HTML_UNRELATED)
+
+    errors: list[str] = []
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        positions = fetch_euraxess_positions(
+            client, ["Statistics", "microbiome"], pages=2, errors=errors
+        )
+
+    # The unfiltered newest-listings scan still works for the free-text term.
+    assert [p.title for p in positions] == ["PhD Candidate in Microbiome Research"]
+    assert errors == [
+        "euraxess: research-field filter request (page 1) failed (HTTP 403)",
+        "euraxess: listing request (page 2) failed (HTTP 403)",
+    ]
+
+
+def test_fetch_euraxess_positions_reports_unreachable_site() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route", request=request)
+
+    errors: list[str] = []
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        positions = fetch_euraxess_positions(client, ["microbiome"], pages=1, errors=errors)
+
+    assert positions == []
+    assert errors == [
+        "euraxess: research-field list request failed (ConnectError)",
+        "euraxess: listing request (page 1) failed (ConnectError)",
+    ]
